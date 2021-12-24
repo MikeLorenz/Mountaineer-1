@@ -1,0 +1,542 @@
+--[[
+Created 12/2021 by ManchegoMike - https://github.com/ManchegoMike
+--]]
+
+local CLASS_WARRIOR = 1
+local CLASS_PALADIN = 2
+local CLASS_HUNTER = 3
+local CLASS_ROGUE = 4
+local CLASS_PRIEST = 5
+local CLASS_DEATHKNIGHT = 6
+local CLASS_SHAMAN = 7
+local CLASS_MAGE = 8
+local CLASS_WARLOCK = 9
+local CLASS_MONK = 10
+local CLASS_DRUID = 11
+local CLASS_DEMONHUNTER = 12
+
+local RACE_HUMAN = 1
+local RACE_ORC = 2
+local RACE_DWARF = 3
+local RACE_NIGHT = 4
+local RACE_UNDEAD = 5
+local RACE_TAUREN = 6
+local RACE_GNOME = 7
+local RACE_TROLL = 8
+
+local PLAYER_LOC, PLAYER_RACE_ID, PLAYER_RACE_NAME, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
+
+SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
+SlashCmdList["MOUNTAINEER"] = function(str)
+
+    local p1, p2, cmd, arg1
+    local override = true
+
+    p1, p2 = str:find("^sound +on$")
+    if p1 then
+        setQuiet(false)
+        printInfo("Sound is now on")
+        return
+    end
+
+    p1, p2 = str:find("^sound +off$")
+    if p1 then
+        setQuiet(true)
+        printInfo("Sound is now off")
+        return
+    end
+
+    p1, p2, arg1 = str:find("^allow +(.*)$")
+    if arg1 then
+        allowOrDisallowItem(arg1, true, override)
+        return
+    end
+
+    p1, p2, arg1 = str:find("^disallow +(.*)$")
+    if arg1 then
+        allowOrDisallowItem(arg1, false, override)
+        return
+    end
+
+    print("/mtn sound on/off")
+    print("     Turns addon sounds on or off")
+    print("/mtn allow {id/name/link}")
+    print("     Allows you to use the item you specify, either by id# or name or link")
+    print("     Example:  \"/mtn allow 7005\",  \"/mtn allow Skinning Knife\"")
+    print("/mtn disallow {id/name/link}")
+    print("     Disallows the item you specify, either by id# or name or link")
+    print("     Example:  \"/mtn disallow 7005\",  \"/mtn disallow Skinning Knife\"")
+
+end
+
+local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
+local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
+
+local EventFrame = CreateFrame('frame', 'EventFrame')
+EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
+EventFrame:RegisterEvent('CHAT_MSG_LOOT')
+EventFrame:RegisterEvent('PLAYER_CAMPING')
+EventFrame:RegisterEvent('PLAYER_LEVEL_UP')
+EventFrame:RegisterEvent('PLAYER_UPDATE_RESTING')
+EventFrame:RegisterEvent('PLAYER_EQUIPMENT_CHANGED')
+EventFrame:RegisterEvent('PLAYER_REGEN_DISABLED')
+EventFrame:RegisterEvent('UNIT_SPELLCAST_SENT')
+
+EventFrame:SetScript('OnEvent', function(self, event, ...)
+
+    if event == 'PLAYER_ENTERING_WORLD' then
+
+        printInfo("Loaded - use /mtn or /mountaineer to access options and features")
+        printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
+
+        PLAYER_LOC = PlayerLocation:CreateFromUnit("player")
+        PLAYER_RACE_ID = C_PlayerInfo.GetRace(PLAYER_LOC)
+        PLAYER_RACE_NAME = C_CreatureInfo.GetRaceInfo(PLAYER_RACE_ID).raceName
+        PLAYER_CLASS_NAME, _, PLAYER_CLASS_ID = C_PlayerInfo.GetClass(PLAYER_LOC)
+
+        if not (PLAYER_CLASS_ID == CLASS_WARRIOR or PLAYER_CLASS_ID == CLASS_ROGUE or PLAYER_CLASS_ID == CLASS_HUNTER) then
+            PlaySoundFile(ERROR_SOUND_FILE)
+            printWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class. You can only be a warrior, rogue, or hunter.")
+            flashWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
+            return
+        end
+
+        local level = UnitLevel('player');
+        local xp = UnitXP('player');
+
+        -- If the character is just starting out
+        if level == 1 and xp < 200 then
+
+            -- If no XP, give it a little time for the user to get rid of the intro dialog.
+            local seconds = (xp == 0) and 5 or 1
+
+            -- Do the following after a delay of a few seconds.
+            C_Timer.After(seconds, function()
+
+                -- Look at each character slot...
+                local nUnequipped = 0
+                for slot = 0, 18 do
+                    local itemId = GetInventoryItemID("player", slot)
+                    -- If there's an item in the slot, the player must remove it.
+                    if itemId ~= nil and itemId ~= 0 then
+                        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                        --print (" slot=", slot, " itemId=", itemId, " name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice)
+                        allowOrDisallowItem(itemId, false)
+                        PickupInventoryItem(slot)
+                        PutItemInBackpack()
+                        printInfo("Unequipped " .. link)
+                        nUnequipped = nUnequipped + 1
+                    end
+                end
+
+                if nUnequipped > 0 then
+                    playSound(PUNCH_SOUND_FILE)
+                    if PLAYER_RACE_ID == RACE_HUMAN or PLAYER_RACE_ID == RACE_GNOME or PLAYER_RACE_ID == RACE_DWARF then
+                        printInfo("Time to punch some wolves!  :)")
+                    elseif PLAYER_RACE_ID == RACE_ORC or PLAYER_RACE_ID == RACE_TROLL then
+                        printInfo("Time to punch some pigs!  :)")
+                    elseif PLAYER_RACE_ID == RACE_NIGHT then
+                        printInfo("Time to punch some pigs and cats!  :)")
+                    elseif PLAYER_RACE_ID == RACE_TAUREN then
+                        printInfo("Time to punch some birds!  :)")
+                    elseif PLAYER_RACE_ID == RACE_UNDEAD then
+                        printInfo("Time to punch some zombies!  :)")
+                    else
+                        printInfo("Time to do some punching!  :)")
+                    end
+                end
+
+            end)
+
+        else
+
+            -- Do the following after a short delay.
+            C_Timer.After(1, function()
+
+                checkSkills(level)
+
+                local nBad = 0
+                for slot = 0, 18 do
+                    local itemId = GetInventoryItemID("player", slot)
+                    -- If there's an item in the slot, check it.
+                    if not itemIsAllowed(itemId) then
+                        nBad = nBad + 1
+                        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                        printWarning(link .. " should be unequipped")
+                    end
+                end
+                if nBad > 0 then
+                    playSound(ERROR_SOUND_FILE)
+                end
+
+            end)
+
+        end
+
+    elseif event == 'PLAYER_REGEN_DISABLED' then
+
+        -- Fired whenever you enter combat, as normal regen rates are disabled during combat.
+        -- This means that either you are in the hate list of a NPC or that you've been taking part in a pvp action (either as attacker or victim).
+
+        -- Do the following after a short delay.
+        C_Timer.After(.3, function()
+
+            local nBadItems = 0
+            local badLink = ''
+
+            -- Look at each character slot...
+            for slot = 0, 18 do
+                local itemId = GetInventoryItemID("player", slot)
+                -- If there's an item in the slot, check it.
+                if not itemIsAllowed(itemId) then
+                    nBadItems = nBadItems + 1
+                    if nBadItems == 1 then
+                        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                        badLink = link
+                    end
+                end
+            end
+
+            if nBadItems > 0 then
+                local msg
+                if nBadItems == 1 then
+                    msg = badLink .. " should be unequipped"
+                else
+                    msg = nBadItems .. " disallowed items should be unequipped"
+                end
+                playSound(ERROR_SOUND_FILE)
+                printWarning(msg)
+                flashWarning(msg)
+            end
+
+        end)
+
+    elseif event == 'PLAYER_LEVEL_UP' then
+
+        local level, hp, mana, tp, str, agi, sta, int, spi = ...
+
+        -- Do the following after a short delay.
+        C_Timer.After(1, function()
+
+            --print(" level=", level, " hp=", hp, " mana=", mana, " tp=", tp, " str=", str, " agi=", agi, " sta=", sta, " int=", int, " spi=", spi)
+            checkSkills(level)
+
+        end)
+
+    elseif event == 'PLAYER_UPDATE_RESTING' then
+
+        -- Do the following after a short delay.
+        C_Timer.After(.3, function()
+
+            if IsResting() then
+                local msg = "Entering resting zone - don't logout here"
+                printInfo(msg)
+                flashInfo(msg)
+            else
+                local msg = "Exiting resting zone"
+                printInfo(msg)
+            end
+
+        end)
+
+    elseif event == 'PLAYER_CAMPING' then
+
+        --if IsResting() then
+        --    local msg = "You should logout in the great outdoors after starting a campfire"
+        --    printInfo(msg)
+        --    flashInfo(msg)
+        --else
+        --    printGood("Camping approved")
+        --end
+
+    elseif event == 'PLAYER_EQUIPMENT_CHANGED' then
+
+        local slot, isEmpty = ...
+
+        -- Do the following after a short delay.
+        C_Timer.After(.3, function()
+
+            if not isEmpty and slot >= 0 and slot <= 18 then
+
+                local itemId = GetInventoryItemID("player", slot)
+
+                if not itemIsAllowed(itemId) then
+                    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                    local msg = "You cannot equip " .. link
+                    playSound(ERROR_SOUND_FILE)
+                    printWarning(msg)
+                    flashWarning(msg)
+                end
+
+            end
+
+        end)
+
+    elseif event == 'CHAT_MSG_LOOT' then
+
+        local text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons = ...
+
+        -- Do the following after a short delay.
+        C_Timer.After(.3, function()
+
+            local itemId, itemText = parseItemLink(text)
+
+            local matched = false
+            if not matched then
+                local _, _, item = text:find("You receive loot: (.*)%.")
+                if item ~= nil then
+                    matched = true
+                    --printGood("You can use " .. item .. " (" .. itemId .. ")")
+                    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                    if type == Enum.ItemClass.Container and subType == 0 then -- normal bag
+                        local msg = "THE BLESSED RUN! " .. item
+                        printGood(msg)
+                        flashGood(msg)
+                    end
+                end
+            end
+            if not matched then
+                local _, _, item = text:find("You receive item: (.*)%.")
+                if item ~= nil then
+                    matched = true
+                    if not mountaineersCanUseItem(itemId) then
+                        --playSound(ERROR_SOUND_FILE)
+                        printWarning("You cannot use " .. item .. " (" .. itemId .. ")")
+                        allowOrDisallowItem(itemId, false)
+                    end
+                end
+            end
+
+        end)
+
+    elseif event == 'UNIT_SPELLCAST_SENT' then
+
+        local unitTarget, _, castGUID, spellId = ...
+
+        -- Do the following after a short delay.
+        C_Timer.After(.1, function()
+
+            if PLAYER_CLASS_ID == CLASS_HUNTER and spellId == 982 then -- Revive Pet
+                local msg = "Pets are mortal, you must abandon after reviving"
+                printWarning(msg)
+                flashWarning(msg)
+                playSound(ERROR_SOUND_FILE)
+            end
+
+        end)
+
+    end
+
+end)
+
+function parseItemLink(link)
+    -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
+    local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
+    return id, text
+end
+
+function itemIsAllowed(itemId)
+    if itemId == nil or itemId == 0 then return true end
+    initSavedVarsIfNec()
+    -- Anything on the good list override anything on the bad list because the good list is only set by the player.
+    if AcctSaved.goodItems[itemId .. ''] then return true end
+    -- If it's on the bad list, it's bad.
+    if AcctSaved.badItems[itemId .. ''] then return false end
+    -- If it's not on either list, assume it's good.
+    return true
+end
+
+function allowOrDisallowItem(itemStr, allow, userOverride)
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
+    if not name then
+        printWarning("Item not found: " .. arg1)
+        return
+    end
+    local id, text = parseItemLink(link)
+    if not id or not text then
+        printWarning("Unable to parse item link: \"" .. link .. '"')
+        return
+    end
+    initSavedVarsIfNec()
+    if allow then
+        -- If the user is manually overriding an item to be good, put it on the good list.
+        if userOverride then AcctSaved.goodItems[id .. ''] = true end
+        AcctSaved.badItems[id .. ''] = nil
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
+    else
+        -- If the user is manually overriding an item to be bad, remove it from the good list.
+        if userOverride then AcctSaved.goodItems[id .. ''] = nil end
+        AcctSaved.badItems[id .. ''] = true
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
+    end
+end
+
+function setQuiet(tf)
+    initSavedVarsIfNec()
+    AcctSaved.quiet = tf
+end
+
+function initSavedVarsIfNec()
+    if AcctSaved == nil then
+        AcctSaved = {
+            goodItems = {},
+            badItems = {},
+            quiet = false,
+        }
+    end
+end
+
+function string:beginsWith(token)
+    return string.sub(self, 1, token:len()) == token
+end
+
+function colorText(hex6, text)
+    return "|cFF" .. hex6 .. text .. "|r"
+end
+
+function flashWarning(text)
+    UIErrorsFrame:AddMessage(text, 1.0, 0.5, 0.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+function flashInfo(text)
+    UIErrorsFrame:AddMessage(text, 1.0, 1.0, 1.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+function flashGood(text)
+    UIErrorsFrame:AddMessage(text, 0.0, 1.0, 0.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+function printInfo(text)
+    print(colorText('c0c0c0', "MOUNTAINEER: ") .. colorText('ffffff', text))
+end
+
+function printWarning(text)
+    print(colorText('ff0000', "MOUNTAINEER: ") .. colorText('ff8000', text))
+end
+
+function printGood(text)
+    print(colorText('0080FF', "MOUNTAINEER: ") .. colorText('00ff00', text))
+end
+
+function checkSkills(playerLevel)
+    -- These are the only skills we care about.
+    local skills = {
+        ['unarmed']   = { rank = 0, name = 'Unarmed' },
+        ['cooking']   = { rank = 0, name = 'Cooking' },
+        ['fishing']   = { rank = 0, name = 'Fishing' },
+        ['first aid'] = { rank = 0, name = 'First Aid' },
+    }
+
+    -- Gather data on the above skills.
+    for skillIndex = 1, GetNumSkillLines() do
+        local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(skillIndex)
+        if not isHeader then
+            if skills[skillName:lower()] ~= nil then
+                skills[skillName:lower()].rank = skillRank
+            end
+        end
+    end
+
+    local expectedRank = playerLevel * 5
+    local grace = 25
+    local closerto = "closer to "
+    if playerLevel >= 55 then
+        grace = (60 - playerLevel) * 5
+        closerto = "";
+    end
+
+    -- Check the skill ranks against the expected rank.
+    for _, skill in pairs(skills) do
+        if skill.rank == 0 then
+            if playerLevel >= 10 then
+                printWarning("You have not yet trained " .. skill.name)
+            end
+        elseif skill.rank == 300 then
+            printGood("Congratulations on achieving " .. skill.name .. " skill level of 300!")
+        else
+            if skill.rank < expectedRank - grace then
+                printWarning("Your " .. skill.name .. " skill level is " .. skill.rank .. ", but should be " .. closerto .. expectedRank)
+            end
+        end
+    end
+end
+
+function getFreeSlotCount()
+    local nFree = 0
+    for bagId = 0, NUM_BAG_SLOTS do
+        --print(" bagId=", bagId)
+        local nSlots = GetContainerNumSlots(bagId)
+        if nSlots > 0 then
+            --if bagId > 0 then
+            --    local invId = ContainerIDToInventoryID(bagId)
+            --    local bagLink = GetInventoryItemLink("player", invId)
+            --    --print(" bagLink=", bagLink)
+            --end
+            local bagFreeSlots, bagType = GetContainerNumFreeSlots(bagId)
+            if bagType == 0 then
+                nFree = nFree + bagFreeSlots
+            end
+        end
+    end
+    --print(" nFree=", nFree)
+    return nFree
+end
+
+-- Returns the number of equipped bags, NOT INCLUDING the default backpack. Valid return range is 0-4.
+function getBagCount()
+    local nBags = 0
+    for bagId = 1, NUM_BAG_SLOTS do
+        --print(" bagId=", bagId)
+        local nSlots = GetContainerNumSlots(bagId)
+        if nSlots > 0 then
+            nBags = nBags + 1
+        end
+    end
+    --print(" nBags=", nBags)
+    return nBags
+end
+
+function allBagSlotsAreFilled()
+    return getBagCount() == 4
+end
+
+function mountaineersCanUseItem(itemId)
+    itemId = tostring(itemId)
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+    --print(" name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice, " classId=", classId, " subclassId=", subclassId, " bindType=", bindType, " expacId=", expacId, " setId=", setId, " isCraftingReagent=", isCraftingReagent)
+    if classId == Enum.ItemClass.Questitem then
+        --print("Quest items are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Tradegoods then
+        --print("Trade goods are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Recipe then
+        --print("Recipes are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Weapon then
+        --print("Skinning knives, mining picks, fishing poles are allowed")
+        if subclassId == Enum.ItemWeaponSubclass.Generic or subclassId == Enum.ItemWeaponSubclass.Fishingpole then
+            return true
+        end
+    end
+    if itemId == '159' then
+        --print("Refreshing Spring Water is allowed since it can be used for cooking, engineering, etc.")
+        return true
+    end
+    if isCraftingReagent then
+        --print("Crafting reagents are allowed")
+        return true
+    end
+    return false
+end
+
+function playSound(path)
+    initSavedVarsIfNec()
+    if not AcctSaved.quiet then
+        PlaySoundFile(path, "Master")
+    end
+end
+

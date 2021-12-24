@@ -1,0 +1,9 @@
+## Interface:11401
+## Title:Mountaineer
+## Notes:Supports Hardcore Mountaineer Challenge play
+## Author: ManchegoMike
+## Version: 0.0.1
+## SavedVariables: AcctSaved
+## SavedVariablesPerCharacter: CharSaved
+
+Mountaineer.lua
