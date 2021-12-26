@@ -58,14 +58,46 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2, arg1 = str:find("^forget +(.*)$")
+    if arg1 then
+        allowOrDisallowItem(arg1, nil, override)
+        return
+    end
+
+    p1, p2, arg1 = str:find("^id +(.*)$")
+    if arg1 then
+        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(arg1)
+        if link == nil then
+            printWarning("Item not found")
+            return
+        end
+        local id, _ = parseItemLink(link)
+        print(" id=", id, " name=", name, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice, " classId=", classId, " subclassId=", subclassId, " bindType=", bindType, " expacId=", expacId, " setId=", setId, " isCraftingReagent=", isCraftingReagent)
+        return
+    end
+
+    p1, p2, arg1 = str:find("^reset everything$")
+    if p1 ~= nil then
+        initSavedVarsIfNec(true)
+        printInfo("All allowed/disallowed designations reset to 'factory' settings")
+        return
+    end
+
     print("/mtn sound on/off")
     print("     Turns addon sounds on or off")
     print("/mtn allow {id/name/link}")
-    print("     Allows you to use the item you specify, either by id# or name or link")
+    print("     Allows you to use the item you specify, either by id# or name or link.")
     print("     Example:  \"/mtn allow 7005\",  \"/mtn allow Skinning Knife\"")
     print("/mtn disallow {id/name/link}")
-    print("     Disallows the item you specify, either by id# or name or link")
+    print("     Disallows the item you specify, either by id# or name or link.")
     print("     Example:  \"/mtn disallow 7005\",  \"/mtn disallow Skinning Knife\"")
+    print("/mtn forget {id/name/link}")
+    print("     Forgets any allow/disallow that might be set for the item you specify, either by id# or name or link.")
+    print("     This will force the item to be re-evaluated then next time you loot or buy it.")
+    print("     Example:  \"/mtn forget 7005\",  \"/mtn forget Skinning Knife\"")
+    print("/mtn reset everything")
+    print("     Resets all allowed/disallowed lists to their default state.")
+    print("     This will lose all your custom allows & disallows and cannot be undone, so use with caution.")
 
 end
 
@@ -299,7 +331,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 local _, _, item = text:find("You receive item: (.*)%.")
                 if item ~= nil then
                     matched = true
-                    if not mountaineersCanUseItem(itemId) then
+                    if not itemIsAllowed(itemId, mountaineersCanUseNonLootedItem) then
                         --playSound(ERROR_SOUND_FILE)
                         printWarning("You cannot use " .. item .. " (" .. itemId .. ")")
                         allowOrDisallowItem(itemId, false)
@@ -335,17 +367,6 @@ function parseItemLink(link)
     return id, text
 end
 
-function itemIsAllowed(itemId)
-    if itemId == nil or itemId == 0 then return true end
-    initSavedVarsIfNec()
-    -- Anything on the good list override anything on the bad list because the good list is only set by the player.
-    if AcctSaved.goodItems[itemId .. ''] then return true end
-    -- If it's on the bad list, it's bad.
-    if AcctSaved.badItems[itemId .. ''] then return false end
-    -- If it's not on either list, assume it's good.
-    return true
-end
-
 function allowOrDisallowItem(itemStr, allow, userOverride)
     local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
     if not name then
@@ -358,7 +379,12 @@ function allowOrDisallowItem(itemStr, allow, userOverride)
         return
     end
     initSavedVarsIfNec()
-    if allow then
+    if allow == nil then
+        -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
+        AcctSaved.badItems[id .. ''] = nil
+        AcctSaved.goodItems[id .. ''] = nil
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
+    elseif allow then
         -- If the user is manually overriding an item to be good, put it on the good list.
         if userOverride then AcctSaved.goodItems[id .. ''] = true end
         AcctSaved.badItems[id .. ''] = nil
@@ -376,10 +402,16 @@ function setQuiet(tf)
     AcctSaved.quiet = tf
 end
 
-function initSavedVarsIfNec()
-    if AcctSaved == nil then
+function initSavedVarsIfNec(force)
+    if force or AcctSaved == nil then
         AcctSaved = {
-            goodItems = {},
+            goodItems = {
+                ['159'] = true, -- Refreshing Spring Water for cooking, engineering, etc.
+                ['6529'] = true, -- Shiny Bauble
+                ['6530'] = true, -- Nightcrawlers
+                ['6532'] = true, -- Bright Baubles
+                ['6533'] = true, -- Aquadynamic Fish Attractor
+            },
             badItems = {},
             quiet = false,
         }
@@ -500,7 +532,38 @@ function allBagSlotsAreFilled()
     return getBagCount() == 4
 end
 
-function mountaineersCanUseItem(itemId)
+-- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
+function itemIsAllowed(itemId, evaluationFunction)
+    if itemId == nil or itemId == 0 then return true end
+    itemId = tostring(itemId)
+    initSavedVarsIfNec()
+
+    -- Anything on the good list overrides anything on the bad list because the good list is only set by the player.
+    if AcctSaved.goodItems[itemId] then
+        --print("On the nice list")
+        return true
+    end
+
+    -- If it's on the bad list, it's bad.
+    if AcctSaved.badItems[itemId] then
+        --print("On the naughty list")
+        return false
+    end
+
+    if evaluationFunction then
+        -- If there's an additional evaluation function, use that.
+        local ret = evaluationFunction(itemId)
+        --print("Evaluation function returned ", ret)
+        return ret
+    else
+        -- If no additional evaluation is required, then assume it's allowed.
+        --print("Fell through to return true")
+        return true
+    end
+end
+
+-- This function is used to decide on an item the first time it's looted.
+function mountaineersCanUseNonLootedItem(itemId)
     itemId = tostring(itemId)
     local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
     --print(" name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice, " classId=", classId, " subclassId=", subclassId, " bindType=", bindType, " expacId=", expacId, " setId=", setId, " isCraftingReagent=", isCraftingReagent)
@@ -516,20 +579,21 @@ function mountaineersCanUseItem(itemId)
         --print("Recipes are allowed")
         return true
     end
-    if classId == Enum.ItemClass.Weapon then
-        --print("Skinning knives, mining picks, fishing poles are allowed")
-        if subclassId == Enum.ItemWeaponSubclass.Generic or subclassId == Enum.ItemWeaponSubclass.Fishingpole then
-            return true
-        end
-    end
-    if itemId == '159' then
-        --print("Refreshing Spring Water is allowed since it can be used for cooking, engineering, etc.")
+    if classId == Enum.ItemClass.Reagent then
+        --print("Reagents are allowed")
         return true
     end
     if isCraftingReagent then
         --print("Crafting reagents are allowed")
         return true
     end
+    if classId == Enum.ItemClass.Weapon then
+        --print("Skinning knives, mining picks, fishing poles are allowed")
+        if subclassId == Enum.ItemWeaponSubclass.Generic or subclassId == Enum.ItemWeaponSubclass.Fishingpole then
+            return true
+        end
+    end
+    --print("Fell through to return false")
     return false
 end
 
