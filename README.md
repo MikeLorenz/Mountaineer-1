@@ -41,21 +41,31 @@ You can use the console command `/mtn` or `/mountaineer`.
 
 All of the following settings are global to your WoW account, so if you turn off sound or allow an item on character A, it will be the same for character B and *all* your characters.
 
-#### `/mtn sound on/off`
+Wherever you see `{id/name/link}`, you can specify by id# or name or link. To specify a link, type `/mtn allow` followed by a space, then SHIFT-click the actual item and it will paste the link into the text you're typing.
+
+### /mtn sound on/off
 
 Turns addon sounds on or off
 
-#### `/mtn allow {id/name/link}`
+### /mtn id {id/name/link}
 
-Allows you to equip/use an item. You can specify by id# or name or link. Examples: `/mtn allow 7005`, `/mtn allow Skinning Knife`
+Identifies an item. Prints some text to show some details about the item.<br/>Examples: `/mtn id 7005`, `/mtn id Skinning Knife`
 
-To specify a link, type `/mtn allow` followed by a space, then SHIFT-click the actual item and it will paste the link into the text you're typing.
+### /mtn allow {id/name/link}
 
-#### `/mtn disallow {id/name/link}`
+Allows you to equip/use an item.<br/>Examples: `/mtn allow 7005`, `/mtn allow Skinning Knife`
 
-Disallows an item. You can specify by id# or name or link. Examples: `/mtn disallow 7005`, `/mtn disallow Skinning Knife`
+### /mtn disallow {id/name/link}
 
-To specify a link, type `/mtn disallow` followed by a space, then SHIFT-click the actual item and it will paste the link into the text you're typing.
+Disallows an item.<br/>Examples: `/mtn disallow 7005`, `/mtn disallow Skinning Knife`
+
+### /mtn forget {id/name/link}
+
+Forgets any allow-or-disallow designation for an item. This will force the item to be re-evaluated then next time you loot or buy it.<br/>Examples: `/mtn forget 7005`, `/mtn forget Skinning Knife`
+
+### /mtn reset everything
+
+Resets all allow-or-disallow designations to their "factory" settings. This will lose all your custom allows & disallows and cannot be undone, so use with caution.
 
 ## Limitations
 
