@@ -5,6 +5,9 @@ Created 12/2021 by ManchegoMike - https://github.com/ManchegoMike
 local MAX_LEVEL = 60
 local MAX_SKILL = 300
 
+local FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL = 10  -- The first player level where the run could end if their first aid, fishing, cooking skills aren't up to the minimum requirement.
+local FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK = FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL * 5  -- The skill rank required at the above player level.
+
 local CLASS_WARRIOR = 1
 local CLASS_PALADIN = 2
 local CLASS_HUNTER = 3
@@ -116,8 +119,6 @@ end
 
 local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
 local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
-
-local playerXPFromLastXPGain = 0
 
 local EventFrame = CreateFrame('frame', 'EventFrame')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
@@ -267,23 +268,27 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local xpMax = UnitXPMax('player')
             local level = UnitLevel('player');
 
-            if level >= 18 and xp > playerXPFromLastXPGain then
+            if level >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 2 and xp > getXPFromLastGain() then
 
-                local percent1 = playerXPFromLastXPGain * 100 / xpMax
+                local percent1 = getXPFromLastGain() * 100 / xpMax
                 local percent2 = xp * 100 / xpMax
-                print(" percent1=", percent1, " percent2=", percent2)
+                --print(" percent1=", percent1, " percent2=", percent2)
 
-                -- We check at the 25%, 50%, 75% mark of the XP bar.
-                for _, p in ipairs({ 25, 50, 75 }) do
-                    if percent1 < p and percent2 >= p then
-                        checkSkills(level, false)
-                        break
+                if percent1 < percent2 then
+                    for _, p in ipairs({ 20, 40, 60, 70, 80, 85, 90, 95 }) do
+                        if percent1 < p and percent2 >= p then
+                            local warningCount = checkSkills(level, false)
+                            if warningCount > 0 and p >= 50 then
+                                playSound(ERROR_SOUND_FILE)
+                            end
+                            break
+                        end
                     end
                 end
 
             end
 
-            playerXPFromLastXPGain = xp
+            setXPFromLastGain(xp)
 
         end)
 
@@ -448,6 +453,21 @@ function initSavedVarsIfNec(force)
             quiet = false,
         }
     end
+    if force or CharSaved == nil then
+        CharSaved = {
+            xpFromLastGain = 0,
+        }
+    end
+end
+
+function getXPFromLastGain()
+    initSavedVarsIfNec()
+    return CharSaved.xpFromLastGain
+end
+
+function setXPFromLastGain(xp)
+    initSavedVarsIfNec()
+    CharSaved.xpFromLastGain = xp
 end
 
 function string:beginsWith(token)
@@ -502,15 +522,13 @@ function checkSkills(playerLevel, showMessageIfAllIsWell)
     end
 
     local warningCount = 0
-    local REQUIRED_PLAYER_LEVEL = 10
-    local REQUIRED_SKILL_RANK = REQUIRED_PLAYER_LEVEL * 5
 
     -- Check the skill ranks against the expected rank.
     for _, skill in pairs(skills) do
         if skill.rank == 0 then
-            if REQUIRED_PLAYER_LEVEL - playerLevel <= 3 then
+            if FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel <= 3 then
                 warningCount = warningCount + 1
-                printWarning("You must train " .. skill.name .. " and level it to " .. REQUIRED_SKILL_RANK .. " before you ding " .. REQUIRED_PLAYER_LEVEL)
+                printWarning("You must train " .. skill.name .. " and level it to " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
                 flashWarning("You must train" .. skill.name)
             end
         else
@@ -534,15 +552,15 @@ function checkSkills(playerLevel, showMessageIfAllIsWell)
                 local minimumRank = playerLevel * 5
                 local minimumRankAtNextLevel = minimumRank + 5
                 --print(" skill.name=", skill.name, " skill.rank=", skill.rank, " minimumRank=", minimumRank, " minimumRankAtNextLevel=", minimumRankAtNextLevel)
-                if REQUIRED_PLAYER_LEVEL - playerLevel > 3 then
+                if FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 3 then
                     -- Don't check if more than 3 levels away from the first required level.
-                elseif REQUIRED_PLAYER_LEVEL - playerLevel > 1 then
-                    if skill.rank < REQUIRED_SKILL_RANK then
+                elseif FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 1 then
+                    if skill.rank < FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK then
                         warningCount = warningCount + 1
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. REQUIRED_SKILL_RANK .. " before you ding " .. REQUIRED_PLAYER_LEVEL)
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
                     end
                 else
-                    if skill.rank < minimumRank and playerLevel >= REQUIRED_PLAYER_LEVEL then
+                    if skill.rank < minimumRank and playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL then
                         -- At this level the player must be at least the minimum rank.
                         warningCount = warningCount + 1
                         printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
@@ -562,6 +580,8 @@ function checkSkills(playerLevel, showMessageIfAllIsWell)
     if warningCount == 0 and showMessageIfAllIsWell then
         printGood("All skills are up to date")
     end
+
+    return warningCount
 end
 
 function checkEquippedItems()
@@ -581,6 +601,8 @@ function checkEquippedItems()
     else
         playSound(ERROR_SOUND_FILE)
     end
+
+    return warningCount
 end
 
 function getFreeSlotCount()
