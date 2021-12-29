@@ -2,6 +2,9 @@
 Created 12/2021 by ManchegoMike - https://github.com/ManchegoMike
 --]]
 
+local MAX_LEVEL = 60
+local MAX_SKILL = 300
+
 local CLASS_WARRIOR = 1
 local CLASS_PALADIN = 2
 local CLASS_HUNTER = 3
@@ -76,15 +79,25 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    p1, p2, arg1 = str:find("^reset everything$")
+    p1, p2 = str:find("^reset everything$")
     if p1 ~= nil then
         initSavedVarsIfNec(true)
         printInfo("All allowed/disallowed designations reset to 'factory' settings")
         return
     end
 
+    p1, p2 = str:find("^check$")
+    if p1 ~= nil then
+        local level = UnitLevel('player');
+        checkSkills(level, true)
+        checkEquippedItems()
+        return
+    end
+
     print("/mtn sound on/off")
     print("     Turns addon sounds on or off")
+    print("/mtn check")
+    print("     Checks your skills and currently equipped items for conformance.")
     print("/mtn allow {id/name/link}")
     print("     Allows you to use the item you specify, either by id# or name or link.")
     print("     Example:  \"/mtn allow 7005\",  \"/mtn allow Skinning Knife\"")
@@ -104,11 +117,14 @@ end
 local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
 local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
 
+local playerXPFromLastXPGain = 0
+
 local EventFrame = CreateFrame('frame', 'EventFrame')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
 EventFrame:RegisterEvent('CHAT_MSG_LOOT')
 EventFrame:RegisterEvent('PLAYER_CAMPING')
 EventFrame:RegisterEvent('PLAYER_LEVEL_UP')
+EventFrame:RegisterEvent('PLAYER_XP_UPDATE')
 EventFrame:RegisterEvent('PLAYER_UPDATE_RESTING')
 EventFrame:RegisterEvent('PLAYER_EQUIPMENT_CHANGED')
 EventFrame:RegisterEvent('PLAYER_REGEN_DISABLED')
@@ -185,21 +201,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Do the following after a short delay.
             C_Timer.After(1, function()
 
-                checkSkills(level)
-
-                local nBad = 0
-                for slot = 0, 18 do
-                    local itemId = GetInventoryItemID("player", slot)
-                    -- If there's an item in the slot, check it.
-                    if not itemIsAllowed(itemId) then
-                        nBad = nBad + 1
-                        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
-                        printWarning(link .. " should be unequipped")
-                    end
-                end
-                if nBad > 0 then
-                    playSound(ERROR_SOUND_FILE)
-                end
+                checkSkills(level, true)
+                checkEquippedItems()
 
             end)
 
@@ -251,7 +254,36 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         C_Timer.After(1, function()
 
             --print(" level=", level, " hp=", hp, " mana=", mana, " tp=", tp, " str=", str, " agi=", agi, " sta=", sta, " int=", int, " spi=", spi)
-            checkSkills(level)
+            checkSkills(level, true)
+
+        end)
+
+    elseif event == 'PLAYER_XP_UPDATE' then
+
+        -- Do the following after a short delay.
+        C_Timer.After(1, function()
+
+            local xp = UnitXP('player')
+            local xpMax = UnitXPMax('player')
+            local level = UnitLevel('player');
+
+            if level >= 18 and xp > playerXPFromLastXPGain then
+
+                local percent1 = playerXPFromLastXPGain * 100 / xpMax
+                local percent2 = xp * 100 / xpMax
+                print(" percent1=", percent1, " percent2=", percent2)
+
+                -- We check at the 25%, 50%, 75% mark of the XP bar.
+                for _, p in ipairs({ 25, 50, 75 }) do
+                    if percent1 < p and percent2 >= p then
+                        checkSkills(level, false)
+                        break
+                    end
+                end
+
+            end
+
+            playerXPFromLastXPGain = xp
 
         end)
 
@@ -450,7 +482,7 @@ function printGood(text)
     print(colorText('0080FF', "MOUNTAINEER: ") .. colorText('00ff00', text))
 end
 
-function checkSkills(playerLevel)
+function checkSkills(playerLevel, showMessageIfAllIsWell)
     -- These are the only skills we care about.
     local skills = {
         ['unarmed']   = { rank = 0, name = 'Unarmed' },
@@ -469,27 +501,85 @@ function checkSkills(playerLevel)
         end
     end
 
-    local expectedRank = playerLevel * 5
-    local grace = 25
-    local closerto = "closer to "
-    if playerLevel >= 55 then
-        grace = (60 - playerLevel) * 5
-        closerto = "";
-    end
+    local warningCount = 0
+    local REQUIRED_PLAYER_LEVEL = 10
+    local REQUIRED_SKILL_RANK = REQUIRED_PLAYER_LEVEL * 5
 
     -- Check the skill ranks against the expected rank.
     for _, skill in pairs(skills) do
         if skill.rank == 0 then
-            if playerLevel >= 10 then
-                printWarning("You have not yet trained " .. skill.name)
+            if REQUIRED_PLAYER_LEVEL - playerLevel <= 3 then
+                warningCount = warningCount + 1
+                printWarning("You must train " .. skill.name .. " and level it to " .. REQUIRED_SKILL_RANK .. " before you ding " .. REQUIRED_PLAYER_LEVEL)
+                flashWarning("You must train" .. skill.name)
             end
-        elseif skill.rank == 300 then
-            printGood("Congratulations on achieving " .. skill.name .. " skill level of 300!")
         else
-            if skill.rank < expectedRank - grace then
-                printWarning("Your " .. skill.name .. " skill level is " .. skill.rank .. ", but should be " .. closerto .. expectedRank)
+            if skill.name == "Unarmed" then
+                if playerLevel >= 5 then
+                    local minimumRank = playerLevel * 5 - 15
+                    local minimumRankAtNextLevel = minimumRank + 5
+                    if skill.rank < minimumRank then
+                        warningCount = warningCount + 1
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
+                        printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                        flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                        playSound(ERROR_SOUND_FILE)
+                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
+                        -- Warn if dinging will invalidate the run.
+                        warningCount = warningCount + 1
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                    end
+                end
+            else
+                local minimumRank = playerLevel * 5
+                local minimumRankAtNextLevel = minimumRank + 5
+                --print(" skill.name=", skill.name, " skill.rank=", skill.rank, " minimumRank=", minimumRank, " minimumRankAtNextLevel=", minimumRankAtNextLevel)
+                if REQUIRED_PLAYER_LEVEL - playerLevel > 3 then
+                    -- Don't check if more than 3 levels away from the first required level.
+                elseif REQUIRED_PLAYER_LEVEL - playerLevel > 1 then
+                    if skill.rank < REQUIRED_SKILL_RANK then
+                        warningCount = warningCount + 1
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. REQUIRED_SKILL_RANK .. " before you ding " .. REQUIRED_PLAYER_LEVEL)
+                    end
+                else
+                    if skill.rank < minimumRank and playerLevel >= REQUIRED_PLAYER_LEVEL then
+                        -- At this level the player must be at least the minimum rank.
+                        warningCount = warningCount + 1
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
+                        printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                        flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                        playSound(ERROR_SOUND_FILE)
+                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
+                        -- Warn if dinging will invalidate the run.
+                        warningCount = warningCount + 1
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                    end
+                end
             end
         end
+    end
+
+    if warningCount == 0 and showMessageIfAllIsWell then
+        printGood("All skills are up to date")
+    end
+end
+
+function checkEquippedItems()
+    local warningCount = 0
+    for slot = 0, 18 do
+        local itemId = GetInventoryItemID("player", slot)
+        -- If there's an item in the slot, check it.
+        if not itemIsAllowed(itemId) then
+            warningCount = warningCount + 1
+            local _, link = GetItemInfo(itemId)
+            printWarning(link .. " should be unequipped")
+        end
+    end
+
+    if warningCount == 0 then
+        printGood("All equipped items are OK")
+    else
+        playSound(ERROR_SOUND_FILE)
     end
 end
 

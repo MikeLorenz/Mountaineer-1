@@ -4,7 +4,9 @@ A World of Warcraft addon to support the Hardcore [Mountaineer Challenge](http:/
 
 Created by ManchegoMike ([Twitch](https://www.twitch.tv/ManchegoMike), [GitHub](https://github.com/ManchegoMike))
 
-This addon is not intended to be "judge and jury" for your Mountaineer Challenge, nor is it the final arbiter of what is or isn't allowed. It doesn't *prevent* you from doing anything; it's simply a way to alert you to some obvious issues and keep you on the straight and narrow.
+This addon cannot be "judge and jury" in every aspect of your Mountaineer Challenge, nor is it the final arbiter of what items are or aren't allowed. It doesn't *prevent* you from doing anything; it's simply a way to alert you to some obvious issues and keep you on the straight and narrow.
+
+The one area where the addon *does* act as judge, jury, and executioner is in relation to your skill levels (unarmed, fishing, cooking, first aid). It will warn you if your skill levels are getting low, and if they drop far enough, it will tell you your run is over.
 
 ## Installation
 
@@ -27,7 +29,9 @@ You can do all of these steps *while the game is running*.
 
 * Whenever you enter combat while wearing a disallowed item, you get a warning.
 
-* Whenever you level up, your skills are checked to make sure you're on track. You'll get a warning if you're falling more than 25 points behind where you should be (your level x 5).
+* Whenever you level up, your skills are checked to make sure you're on track. You'll get a warning if you're falling behind where you should be.
+
+* From level 19 onwards, your skills are checked at 25%, 50%, and 75% of your XP bar to make sure you don't ding with a skill level so low it invalidates your run.
 
 * Whenever you enter a resting area (city or inn), you'll see a message gently reminding you not to logout there.
 
@@ -46,6 +50,10 @@ Wherever you see `{id/name/link}`, you can specify by id# or name or link. To sp
 ### /mtn sound on/off
 
 Turns addon sounds on or off
+
+### /mtn check
+
+Checks your skills and currently equipped items for conformance.
 
 ### /mtn id {id/name/link}
 

@@ -2,7 +2,7 @@
 ## Title:Mountaineer
 ## Notes:Supports Hardcore Mountaineer Challenge play
 ## Author: ManchegoMike
-## Version: 0.0.2
+## Version: 0.0.3
 ## SavedVariables: AcctSaved
 ## SavedVariablesPerCharacter: CharSaved
 
