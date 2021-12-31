@@ -31,7 +31,7 @@ You can do all of these steps *while the game is running*.
 
 * Whenever you level up, your skills are checked to make sure you're on track. You'll get a warning if you're falling behind where you should be.
 
-* From level 19 onwards, your skills are checked at 25%, 50%, and 75% of your XP bar to make sure you don't ding with a skill level so low it invalidates your run.
+* From level 9 and up, your skills are checked several times during leveling to make sure you don't ding with a skill level so low it invalidates your run.
 
 * Whenever you enter a resting area (city or inn), you'll see a message gently reminding you not to logout there.
 
