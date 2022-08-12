@@ -2,7 +2,7 @@
 
 A World of Warcraft addon to support the Hardcore [Mountaineer Challenge](http://tinyurl.com/hc-mountaineers). Designed for Season of Mastery.
 
-Created by ManchegoMike ([Twitch](https://www.twitch.tv/ManchegoMike), [GitHub](https://github.com/ManchegoMike))
+This addon created by ManchegoMike ([Twitch](https://www.twitch.tv/ManchegoMike), [GitHub](https://github.com/ManchegoMike))
 
 This addon cannot be "judge and jury" in every aspect of your Mountaineer Challenge, nor is it the final arbiter of what items are or aren't allowed. It doesn't *prevent* you from doing anything; it's simply a way to alert you to some obvious issues and keep you on the straight and narrow.
 
@@ -31,7 +31,7 @@ You can do all of these steps *while the game is running*.
 
 * Whenever you level up, your skills are checked to make sure you're on track. You'll get a warning if you're falling behind where you should be.
 
-* From level 9 and up, your skills are checked several times during leveling to make sure you don't ding with a skill level so low it invalidates your run.
+* Whenever you reach various points in your XP bar, your skills are to make sure you don't ding with a skill level so low it invalidates your run.
 
 * Whenever you enter a resting area (city or inn), you'll see a message gently reminding you not to logout there.
 
