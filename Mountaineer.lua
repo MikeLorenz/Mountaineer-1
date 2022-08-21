@@ -4,29 +4,12 @@ Created v1 12/2021 by ManchegoMike (MSL) - https://github.com/ManchegoMike
 Created v2 08/2022 by ManchegoMike (MSL)
 
 http://tinyurl.com/hc-mountaineers
-
-TODO:
-[x] Allow wands as quest rewards
-[x] Implement rod check for staves/polearms/shields as quest rewards
-    [ ] Detect the first time they get each rod: grats w level limit reminder
-[x] Don't warn as often if more than 1 level below the min check level
-[ ] Implement compass so players don't need a separate addon
-[ ] Implement settings dialog
-    [ ] Always show '/mtn check' results
-    [ ] Select Hardtack or Lucky challenge
-    [ ] Show/hide minimap
-    [ ] Show/hide compass (should look a bit like minimap without the map)
-    [ ] Show/hide target frame
-    [ ] Show/hide left & right gryphons
-    [ ] Sounds on/off
-    [ ] Button to reset to factory settings
-[ ] Change goodItems to index by integer instead of string
-[ ] Add support for trading items with a duo/trio partner
 --------------------------------------------------------------------------------
 --]]
 
+-- These function as constants, but upon initialization they may be reset based on the current game version.
 local MAX_LEVEL = 60
-local MAX_SKILL = 300
+local MAX_SKILL = MAX_LEVEL * 5
 
 -- The first player level where the run could end if their first aid, fishing,
 -- cooking skills aren't up to the minimum requirement.
@@ -49,6 +32,9 @@ local CLASS_DRUID = 11
 local CLASS_DEMONHUNTER = 12
 
 local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
+
+-- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
+local gSkillsAreUpToDate = false
 
 SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
 SlashCmdList["MOUNTAINEER"] = function(str)
@@ -110,7 +96,8 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^check$")
     if p1 ~= nil then
         local level = UnitLevel('player');
-        checkSkills(level, true)
+        local nWarnings = checkSkills(level)
+        gSkillsAreUpToDate = (nWarnings == 0)
         checkEquippedItems()
         return
     end
@@ -141,6 +128,7 @@ local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
 local EventFrame = CreateFrame('frame', 'EventFrame')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
 EventFrame:RegisterEvent('CHAT_MSG_LOOT')
+EventFrame:RegisterEvent('CHAT_MSG_SKILL')
 EventFrame:RegisterEvent('PLAYER_CAMPING')
 EventFrame:RegisterEvent('PLAYER_LEVEL_UP')
 EventFrame:RegisterEvent('PLAYER_XP_UPDATE')
@@ -156,25 +144,31 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         printInfo("Loaded - use /mtn or /mountaineer to access options and features")
         printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
 
+        -- Check the WoW version and set constants accordingly.
+
+        local version = GetBuildInfo()
+        if version:sub(1, 2) == '1.' then
+            -- Classic / vanilla
+            MAX_LEVEL = 60
+        elseif version:sub(1, 2) == '2.' then
+            -- TBC
+            MAX_LEVEL = 70
+        elseif version:sub(1, 2) == '3.' then
+            -- WotLK
+            MAX_LEVEL = 80
+        else
+            printWarning("This addon only designed for WoW versions 1 through 3 -- version " .. version .. " is not supported")
+        end
+        MAX_SKILL = MAX_LEVEL * 5
+
         -- Hide the minimap. Mountaineer 2.0 rules do not allow maps.
-        MinimapCluster:Hide()
 
-        -- MSL 2022-08-07
-        -- Below is crude code to hide the target frame, the minimap, and the
-        -- left & right gryphons next to the main toolbar. It's experimental at
-        -- this stage, and really should be accompanied by a UI that lets the
-        -- user select what they want to hide. Or just use HideBlizzard.
-
-        --TargetFrame:SetScript("OnEvent", nil)
-        --TargetFrame:Hide()
         --MinimapCluster:Hide()
+
+        -- Hide the left & right gryphons next to the main toolbar.
+
         --MainMenuBarLeftEndCap:Hide()
         --MainMenuBarRightEndCap:Hide()
-
-        -- MSL 2022-08-07
-        -- For some reason, the addon always has an error querying race on startup,
-        -- but on /reload it's fine. I used the race simply to customize the welcome
-        -- message, but that's not necessary, so I removed all of that.
 
         PLAYER_LOC = PlayerLocation:CreateFromUnit("player")
         PLAYER_CLASS_NAME, _, PLAYER_CLASS_ID = C_PlayerInfo.GetClass(PLAYER_LOC)
@@ -230,7 +224,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Do the following after a short delay.
             C_Timer.After(1, function()
 
-                checkSkills(level, true)
+                local nWarnings = checkSkills(level)
+                gSkillsAreUpToDate = (nWarnings == 0)
                 checkEquippedItems()
 
             end)
@@ -278,7 +273,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         C_Timer.After(1, function()
 
             --print(" level=", level, " hp=", hp, " mana=", mana, " tp=", tp, " str=", str, " agi=", agi, " sta=", sta, " int=", int, " spi=", spi)
-            checkSkills(level, true)
+            local nWarnings = checkSkills(level)
+            gSkillsAreUpToDate = (nWarnings == 0)
 
         end)
 
@@ -304,7 +300,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 if percent1 < percent2 then
                     for _, p in ipairs(percentList) do
                         if percent1 < p and percent2 >= p then
-                            local warningCount = checkSkills(level, false)
+                            local warningCount = checkSkills(level, true)
                             if warningCount > 0 -- there's a potential problem, so maybe play the error sound
                             and p >= 50 -- only play the sound if player xp is past the halfway point for the level
                             and level >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 1 -- don't play the sound if level N is the first level check and we're still at level N-2
@@ -410,7 +406,42 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                     end
                 end
             end
+            if not matched then
+                local _, _, item = text:find("You create: (.*)%.")
+                if item ~= nil then
+                    matched = true
+                    -- Make sure the player is allowed to use this item, since they made it.
+                    allowOrDisallowItem(itemId, true)
+                end
+            end
 
+        end)
+
+    elseif event == 'CHAT_MSG_SKILL' then
+
+        local text = ...
+        local level = UnitLevel('player')
+
+        -- Do the following after a short delay.
+        C_Timer.After(.3, function()
+
+            local _, _, skill = text:find("Your skill in (.*) has increased")
+            if skill ~= nil then
+                skill = skill:lower()
+                if skill == 'unarmed' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
+                    if not gSkillsAreUpToDate then
+                        local nWarnings = checkSkills(level, true, true)
+                        if nWarnings == 0 then
+                            -- If we're here, the player just transitioned to all skills being up to date.
+                            gSkillsAreUpToDate = true
+                            -- Repeat the check so the all-is-well message is displayed.
+                            checkSkills(level)
+                            -- Congratulate them with the "WORK COMPLETE" sound.
+                            PlaySoundFile(558132)
+                        end
+                    end
+                end
+            end
         end)
 
     elseif event == 'UNIT_SPELLCAST_SENT' then
@@ -539,29 +570,14 @@ function initSavedVarsIfNec(force)
                 [ '4342'] = true, -- purple dye
                 [ '4470'] = true, -- simple wood
                 [ '4471'] = true, -- flint and tinder
-                [ '4547'] = true, -- Gnomish Zapper (quest wand)
+                [ '4536'] = true, -- shiny red apple
                 [ '4625'] = true, -- firebloom (herb)
                 [ '5042'] = true, -- red ribboned wrapping paper
                 [ '5048'] = true, -- blue ribboned wrapping paper
                 [ '5060'] = true, -- thieves' tools
                 [ '5140'] = true, -- flash powder
                 [ '5173'] = true, -- deathweed
-                [ '5240'] = true, -- Torchlight Wand (quest wand)
-                [ '5241'] = true, -- Dwarven Flamestick (quest wand)
-                [ '5242'] = true, -- Cinder Wand (quest wand)
-                [ '5244'] = true, -- Consecrated Wand (quest wand)
-                [ '5246'] = true, -- Excavation Rod (quest wand)
-                [ '5247'] = true, -- Rod of Sorrow (quest wand)
-                [ '5248'] = true, -- Flash Wand (quest wand)
-                [ '5249'] = true, -- Burning Sliver (quest wand)
-                [ '5250'] = true, -- Charred Wand (quest wand)
-                [ '5252'] = true, -- Wand of Decay (quest wand)
-                [ '5253'] = true, -- Goblin Igniter (quest wand)
-                [ '5326'] = true, -- Flaring Baton (quest wand)
-                [ '5356'] = true, -- Branding Rod (quest wand)
                 [ '5565'] = true, -- infernal stone
-                [ '5604'] = true, -- Elven Wand (quest wand)
-                [ '5818'] = true, -- Moonbeam Wand (quest wand)
                 [ '5956'] = true, -- blacksmith hammer
                 [ '5976'] = true, -- guild tabard
                 [ '6217'] = true, -- copper rod
@@ -573,10 +589,6 @@ function initSavedVarsIfNec(force)
                 [ '6530'] = true, -- nightcrawlers
                 [ '6532'] = true, -- bright baubles
                 [ '6533'] = true, -- aquadynamic fish attractor
-                [ '6677'] = true, -- Spellcrafter Wand (quest wand)
-                [ '6729'] = true, -- Fizzle's Zippy Lighter (quest wand)
-                [ '6797'] = true, -- Eyepoker (quest wand)
-                [ '6806'] = true, -- Dancing Flame (quest wand)
                 [ '6953'] = true, -- verigan's fist (paladin quest)
                 [ '6966'] = true, -- elunite axe (warrior quest)
                 [ '6967'] = true, -- elunite sword (warrior quest)
@@ -593,7 +605,6 @@ function initSavedVarsIfNec(force)
                 [ '6983'] = true, -- haggard's hammer (warrior quest)
                 [ '6984'] = true, -- umbral sword (warrior quest)
                 [ '6985'] = true, -- haggard's sword (warrior quest)
-                [ '7001'] = true, -- Gravestone Scepter (quest wand)
                 [ '7005'] = true, -- skinning knife
                 [ '7115'] = true, -- heirloom axe (warrior quest)
                 [ '7116'] = true, -- heirloom dagger (warrior quest)
@@ -604,12 +615,6 @@ function initSavedVarsIfNec(force)
                 [ '7327'] = true, -- thun'grim's dagger (warrior quest)
                 [ '7328'] = true, -- thun'grim's mace (warrior quest)
                 [ '7329'] = true, -- thun'grim's sword (warrior quest)
-                [ '7513'] = true, -- ragefire wand (mage quest)
-                [ '7513'] = true, -- Ragefire Wand (quest wand)
-                [ '7514'] = true, -- icefury wand (mage quest)
-                [ '7514'] = true, -- Icefury Wand (quest wand)
-                [ '7607'] = true, -- Sable Wand (quest wand)
-                [ '8071'] = true, -- Sizzle Stick (quest wand)
                 [ '8153'] = true, -- wildvine (herb)
                 [ '8343'] = true, -- heavy silken thread
                 [ '8766'] = true, -- morning glory dew
@@ -622,21 +627,13 @@ function initSavedVarsIfNec(force)
                 [ '8923'] = true, -- essence of agony
                 [ '8924'] = true, -- dust of deterioration
                 [ '8925'] = true, -- crystal vial
-                [ '9513'] = true, -- ley staff (mage quest)
-                [ '9514'] = true, -- arcane staff (mage quest)
                 [ '9517'] = true, -- celestial stave (mage quest)
-                [ '9654'] = true, -- Cairnstone Sliver (quest wand)
                 ['10290'] = true, -- pink dye
                 ['10572'] = true, -- freezing shard (mage quest)
-                ['10704'] = true, -- Chillnail Splinter (quest wand)
                 ['10766'] = true, -- plaguerot sprig (mage quest)
                 ['10938'] = true, -- lesser magic essence
                 ['10940'] = true, -- strange dust
-                ['11263'] = true, -- nether force wand (mage quest)
-                ['11263'] = true, -- Nether Force Wand (quest wand)
                 ['11291'] = true, -- star wood
-                ['11860'] = true, -- Charged Lightning Rod (quest wand)
-                ['12296'] = true, -- Spark of the People's Militia (quest wand)
                 ['13463'] = true, -- dreamfoil (herb)
                 ['13464'] = true, -- golden sansam (herb)
                 ['13465'] = true, -- mountain silversage (herb)
@@ -644,16 +641,7 @@ function initSavedVarsIfNec(force)
                 ['13467'] = true, -- icecap (herb)
                 ['13468'] = true, -- black lotus (herb)
                 ['14341'] = true, -- rune thread
-                ['15105'] = true, -- staff of noh'orahil (warlock quest)
-                ['15106'] = true, -- staff of dar'orahil (warlock quest)
-                ['15109'] = true, -- staff of soran'ruk (warlock quest)
-                ['15204'] = true, -- Moonstone Wand (quest wand)
-                ['15465'] = true, -- Stingshot Wand (quest wand)
-                ['15692'] = true, -- Kodo Brander (quest wand)
                 ['16583'] = true, -- demonic figurine
-                ['16789'] = true, -- Captain Rackmore's Tiller (quest wand)
-                ['16993'] = true, -- Smokey's Fireshooter (quest wand)
-                ['16997'] = true, -- Stormrager (quest wand)
                 ['17020'] = true, -- arcane powder
                 ['17021'] = true, -- wild berries
                 ['17026'] = true, -- wild thornroot
@@ -670,11 +658,8 @@ function initSavedVarsIfNec(force)
                 ['17038'] = true, -- ironwood seed
                 ['18256'] = true, -- imbued vial
                 ['18567'] = true, -- elemental flux
-                ['19108'] = true, -- Wand of Biting Cold (quest wand)
-                ['19118'] = true, -- Nature's Breath (quest wand)
                 ['19726'] = true, -- bloodvine (herb)
                 ['19727'] = true, -- blood scythe (herb)
-                ['20082'] = true, -- Woestave (quest wand)
                 ['20815'] = true, -- jeweler's kit
                 ['20824'] = true, -- simple grinder
                 ['21177'] = true, -- symbol of kings
@@ -692,8 +677,6 @@ function initSavedVarsIfNec(force)
                 ['22793'] = true, -- mana thistle (herb)
                 ['22794'] = true, -- fel lotus (herb)
                 ['22797'] = true, -- nightmare seed (herb)
-                ['22971'] = true, -- Hoodoo Wand (quest wand)
-                ['22997'] = true, -- Ley-Keeper's Wand (quest wand)
                 ['23420'] = true, -- engraved axe (warrior quest)
                 ['23421'] = true, -- engraved sword (warrior quest)
                 ['23422'] = true, -- engraved dagger (warrior quest)
@@ -704,34 +687,13 @@ function initSavedVarsIfNec(force)
                 ['23432'] = true, -- engraved greatsword (warrior quest)
                 ['24136'] = true, -- farstrider's bow (hunter quest)
                 ['24138'] = true, -- silver crossbow (hunter quest)
-                ['24342'] = true, -- Stillpine Shocker (quest wand)
-                ['25629'] = true, -- Ogre Handler's Shooter (quest wand)
-                ['25632'] = true, -- Wand of Happiness (quest wand)
-                ['25640'] = true, -- Nesingwary Safari Stick (quest wand)
-                ['25806'] = true, -- Nethekurse's Rod of Torment (quest wand)
-                ['25808'] = true, -- Rod of Dire Shadows (quest wand)
-                ['25973'] = true, -- Dark Augur's Wand (quest wand)
-                ['27403'] = true, -- Stillpine Stinger (quest wand)
-                ['27404'] = true, -- Lightspark (quest wand)
                 ['27860'] = true, -- purified draenic water
-                ['28063'] = true, -- Survivalist's Wand (quest wand)
-                ['28151'] = true, -- Arcanist's Wand (quest wand)
                 ['28399'] = true, -- filtered draenic water
-                ['29779'] = true, -- Rejuvenating Scepter (quest wand)
-                ['29915'] = true, -- Desolation Rod (quest wand)
-                ['30252'] = true, -- Unearthed Enkaat Wand (quest wand)
                 ['30504'] = true, -- leafblade dagger (rogue quest)
-                ['30523'] = true, -- Hotshot Cattle Prod (quest wand)
                 ['30817'] = true, -- simple flour
-                ['30859'] = true, -- Wand of the Seer (quest wand)
-                ['31424'] = true, -- Arcane Wand of Sylvanaar (quest wand)
-                ['31474'] = true, -- Wand of the Ancestors (quest wand)
-                ['31724'] = true, -- Arakkoa Divining Rod (quest wand)
-                ['31761'] = true, -- Talonbranch Wand (quest wand)
                 ['33034'] = true, -- gordok grog
                 ['33035'] = true, -- ogre mead
                 ['33036'] = true, -- mudder's milk
-                ['34418'] = true, -- Scrying Wand (quest wand)
                 ['38518'] = true, -- cro's apple
             },
         }
@@ -785,7 +747,8 @@ function printGood(text)
     print(colorText('0080FF', "MOUNTAINEER: ") .. colorText('00ff00', text))
 end
 
-function checkSkills(playerLevel, showMessageIfAllIsWell)
+-- Checks skills. Returns (warningCount, challengeIsOver).
+function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
     -- These are the only skills we care about.
     local skills = {
         ['unarmed']   = { rank = 0, name = 'Unarmed' },
@@ -812,8 +775,10 @@ function checkSkills(playerLevel, showMessageIfAllIsWell)
         if skill.rank == 0 then
             if playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 3 then
                 warningCount = warningCount + 1
-                printWarning("You must train " .. skill.name .. " and level it to " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
-                flashWarning("You must train " .. skill.name)
+                if not hideWarnings then
+                    printWarning("You must train " .. skill.name .. " and level it to " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
+                    flashWarning("You must train " .. skill.name)
+                end
             end
         else
             if skill.name == "Unarmed" then
@@ -822,15 +787,19 @@ function checkSkills(playerLevel, showMessageIfAllIsWell)
                     local minimumRankAtNextLevel = minimumRank + 5
                     if skill.rank < minimumRank then
                         warningCount = warningCount + 1
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
-                        printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                        flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                        playSound(ERROR_SOUND_FILE)
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
+                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            playSound(ERROR_SOUND_FILE)
+                        end
                         challengeIsOver = true
                     elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
                         -- Warn if dinging will invalidate the run.
                         warningCount = warningCount + 1
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                        end
                     end
                 end
             else
@@ -842,28 +811,34 @@ function checkSkills(playerLevel, showMessageIfAllIsWell)
                 elseif FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 1 then
                     if skill.rank < FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK then
                         warningCount = warningCount + 1
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
+                        end
                     end
                 else
                     if skill.rank < minimumRank and playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL then
                         -- At this level the player must be at least the minimum rank.
                         warningCount = warningCount + 1
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
-                        printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                        flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                        playSound(ERROR_SOUND_FILE)
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
+                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            playSound(ERROR_SOUND_FILE)
+                        end
                         challengeIsOver = true
                     elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
                         -- Warn if dinging will invalidate the run.
                         warningCount = warningCount + 1
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                        end
                     end
                 end
             end
         end
     end
 
-    if warningCount == 0 and showMessageIfAllIsWell then
+    if warningCount == 0 and not hideMessageIfAllIsWell then
         printGood("All skills are up to date")
     end
 
@@ -932,7 +907,10 @@ end
 
 -- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
 function itemIsAllowed(itemId, evaluationFunction)
+
     if itemId == nil or itemId == 0 then return true end
+    --print("itemIsAllowed("..itemId..")")
+
     itemId = tostring(itemId)
     initSavedVarsIfNec()
 
@@ -986,18 +964,40 @@ function mountaineersCanUseNonLootedItem(itemId)
         --print("Crafting reagents are allowed")
         return true
     end
+    if classId == Enum.ItemClass.Gem then
+        --print("Gems are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Glyph then
+        --print("Glyphs are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.ItemEnhancement then
+        --print("Item enhancements are allowed")
+        return true
+    end
     if classId == Enum.ItemClass.Weapon then
-        --print("Skinning knives, mining picks, fishing poles, wands are allowed")
-        if subclassId == Enum.ItemWeaponSubclass.Generic or subclassId == Enum.ItemWeaponSubclass.Fishingpole or subclassId == Enum.ItemWeaponSubclass.Wand then
+        --print("Skinning knives, mining picks, fishing poles, wands, staves, polearms are allowed")
+        if subclassId == Enum.ItemWeaponSubclass.Generic
+        or subclassId == Enum.ItemWeaponSubclass.Fishingpole
+        or subclassId == Enum.ItemWeaponSubclass.Wand
+        or subclassId == Enum.ItemWeaponSubclass.Staff
+        or subclassId == Enum.ItemWeaponSubclass.Polearm
+        or subclassId == Enum.ItemWeaponSubclass.Unarmed
+        then
             return true
-        end
-        if subclassId == Enum.ItemWeaponSubclass.Staff or subclassId == Enum.ItemWeaponSubclass.Polearm then
-            return playerHasQualifyingBlacksmithingRod(name)
         end
     end
     if classId == Enum.ItemClass.Armor then
-        if subclassId == Enum.ItemArmorSubclass.Shield then
-            return playerHasQualifyingBlacksmithingRod(name)
+        --print("Shields, librams, idols, totems, sigils, relics are allowed")
+        if subclassId == Enum.ItemArmorSubclass.Shield
+        or subclassId == Enum.ItemArmorSubclass.Libram
+        or subclassId == Enum.ItemArmorSubclass.Idol
+        or subclassId == Enum.ItemArmorSubclass.Totem
+        or subclassId == Enum.ItemArmorSubclass.Sigil
+        or subclassId == Enum.ItemArmorSubclass.Relic
+        then
+            return true
         end
     end
     if lname:find("^pattern: ") or lname:find("^formula: ") or lname:find("^recipe: ") or lname:find("^design: ") or lname:find("^plans: ") then
@@ -1010,35 +1010,6 @@ function mountaineersCanUseNonLootedItem(itemId)
     end
     --print("Fell through to return false")
     return false
-end
-
-function playerHasQualifyingBlacksmithingRod(name)
-    local level = UnitLevel('player')
-    local retval = false
-    if playerHasItem(11144) then
-        retval = true
-        printInfo(name .. " is allowed because you have a TrueSilver rod")
-    elseif playerHasItem(11128) then
-        if level <= 45 then
-            retval = true
-            printInfo(name .. " is allowed because you have a Golden rod")
-        else
-            printWarning(name .. " not allowed because the Golden Rod does not work beyond level 45 - you need a TrueSilver Rod")
-        end
-    elseif playerHasItem(6338) then
-        if level <= 35 then
-            retval = true
-            printInfo(name .. " is allowed because you have a Silver rod")
-        else
-            printWarning(name .. " not allowed because the Silver Rod does not work beyond level 35 - you need a Golden Rod")
-        end
-    end
-    return retval
-    --return playerHasItem(function(itemId)
-    --    return (itemId == 11144)                    -- Truesilver Rod
-    --        or (itemId == 11128 and level <= 45)    -- Golden Rod
-    --        or (itemId ==  6338 and level <= 35)    -- Silver Rod
-    --end)
 end
 
 function playerHasItem(arg)
