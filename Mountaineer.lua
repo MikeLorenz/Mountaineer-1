@@ -56,6 +56,18 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2 = str:find("^minimap +on$")
+    if p1 then
+        MinimapCluster:Show()
+        return
+    end
+
+    p1, p2 = str:find("^minimap +off$")
+    if p1 then
+        MinimapCluster:Hide()
+        return
+    end
+
     p1, p2, arg1 = str:find("^allow +(.*)$")
     if arg1 then
         allowOrDisallowItem(arg1, true, override)
@@ -86,7 +98,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    p1, p2 = str:find("^reset everything$")
+    p1, p2 = str:find("^reset everything i really mean it$")
     if p1 ~= nil then
         initSavedVarsIfNec(true)
         printInfo("All allowed/disallowed designations reset to 'factory' settings")
@@ -102,21 +114,23 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    print("/mtn sound on/off")
-    print("     Turns addon sounds on or off")
-    print("/mtn check")
+    print(colorText('ffff00', "/mtn sound on/off"))
+    print("     Turns addon sounds on or off.")
+    print(colorText('ffff00', "/mtn minimap on/off"))
+    print("     Turns the minimap on or off.")
+    print(colorText('ffff00', "/mtn check"))
     print("     Checks your skills and currently equipped items for conformance.")
-    print("/mtn allow {id/name/link}")
+    print(colorText('ffff00', "/mtn allow {id/name/link}"))
     print("     Allows you to use the item you specify, either by id# or name or link.")
     print("     Example:  \"/mtn allow 7005\",  \"/mtn allow Skinning Knife\"")
-    print("/mtn disallow {id/name/link}")
+    print(colorText('ffff00', "/mtn disallow {id/name/link}"))
     print("     Disallows the item you specify, either by id# or name or link.")
     print("     Example:  \"/mtn disallow 7005\",  \"/mtn disallow Skinning Knife\"")
-    print("/mtn forget {id/name/link}")
+    print(colorText('ffff00', "/mtn forget {id/name/link}"))
     print("     Forgets any allow/disallow that might be set for the item you specify, either by id# or name or link.")
     print("     This will force the item to be re-evaluated then next time you loot or buy it.")
     print("     Example:  \"/mtn forget 7005\",  \"/mtn forget Skinning Knife\"")
-    print("/mtn reset everything")
+    print(colorText('ffff00', "/mtn reset everything i really mean it"))
     print("     Resets all allowed/disallowed lists to their default state.")
     print("     This will lose all your custom allows & disallows and cannot be undone, so use with caution.")
 
@@ -163,7 +177,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         -- Hide the minimap. Mountaineer 2.0 rules do not allow maps.
 
-        --MinimapCluster:Hide()
+        MinimapCluster:Hide()
 
         -- Hide the left & right gryphons next to the main toolbar.
 
