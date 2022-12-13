@@ -8,6 +8,7 @@ http://tinyurl.com/hc-mountaineers
 --]]
 
 -- These function as constants, but upon initialization they may be reset based on the current game version.
+local GAME_VERSION = 99 -- 1 = Classic Era or SoM, 2 = TBC, 3 = WotLK
 local MAX_LEVEL = 60
 local MAX_SKILL = MAX_LEVEL * 5
 
@@ -36,11 +37,203 @@ local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
 local gSkillsAreUpToDate = false
 
+local gDefaultGoodItems = {
+    [  '159'] = true, -- refreshing spring water
+    [  '765'] = true, -- silverleaf (herb)
+    [  '785'] = true, -- mageroyal (herb)
+    [ '1179'] = true, -- ice cold milk
+    [ '1205'] = true, -- melon juice
+    [ '1645'] = true, -- moonberry juice
+    [ '1708'] = true, -- sweet nectar
+    [ '2320'] = true, -- coarse thread
+    [ '2321'] = true, -- fine thread
+    [ '2324'] = true, -- bleach
+    [ '2325'] = true, -- black dye
+    [ '2447'] = true, -- peacebloom (herb)
+    [ '2449'] = true, -- earthroot (herb)
+    [ '2450'] = true, -- briarthorn (herb)
+    [ '2452'] = true, -- swiftthistle (herb)
+    [ '2453'] = true, -- bruiseweed (herb)
+    [ '2593'] = true, -- flaks of stormwind tawny
+    [ '2594'] = true, -- flagon of dwarven honeymead
+    [ '2595'] = true, -- jug of badlands bourbon
+    [ '2596'] = true, -- skin of dwarven stout
+    [ '2604'] = true, -- red dye
+    [ '2605'] = true, -- green dye
+    [ '2665'] = true, -- stormwind seasoning herbs
+    [ '2678'] = true, -- mild spices
+    [ '2692'] = true, -- hot spices
+    [ '2723'] = true, -- bottle of dalaran noir
+    [ '2880'] = true, -- weak flux
+    [ '2901'] = true, -- mining pick
+    [ '2928'] = true, -- dust of decay
+    [ '2930'] = true, -- essence of pain
+    [ '3342'] = true, -- captain sander's shirt
+    [ '3343'] = true, -- captain sander's booty bag
+    [ '3344'] = true, -- captain sander's sash
+    [ '3355'] = true, -- wild steelbloom (herb)
+    [ '3356'] = true, -- kingsblood (herb)
+    [ '3357'] = true, -- liferoot (herb)
+    [ '3358'] = true, -- khadgar's whisker (herb)
+    [ '3369'] = true, -- grave moss (herb)
+    [ '3371'] = true, -- empty vial
+    [ '3371'] = true, -- mpty vial
+    [ '3372'] = true, -- leaded vial
+    [ '3419'] = true, -- red rose
+    [ '3420'] = true, -- black rose
+    [ '3421'] = true, -- simple wildflowers
+    [ '3422'] = true, -- beautiful wildflowers
+    [ '3423'] = true, -- bouquet of white roses
+    [ '3424'] = true, -- bouquet of black roses
+    [ '3466'] = true, -- strong flux
+    [ '3713'] = true, -- soothing spices
+    [ '3777'] = true, -- lethargy root
+    [ '3818'] = true, -- fadeleaf (herb)
+    [ '3819'] = true, -- wintersbite (herb)
+    [ '3820'] = true, -- stranglekelp (herb)
+    [ '3821'] = true, -- goldthorn (herb)
+    [ '3857'] = true, -- coal
+    [ '4289'] = true, -- salt
+    [ '4291'] = true, -- silken thread
+    [ '4340'] = true, -- gray dye
+    [ '4341'] = true, -- yellow dye
+    [ '4342'] = true, -- purple dye
+    [ '4470'] = true, -- simple wood
+    [ '4471'] = true, -- flint and tinder
+    [ '4536'] = true, -- shiny red apple
+    [ '4625'] = true, -- firebloom (herb)
+    [ '5042'] = true, -- red ribboned wrapping paper
+    [ '5048'] = true, -- blue ribboned wrapping paper
+    [ '5060'] = true, -- thieves' tools
+    [ '5140'] = true, -- flash powder
+    [ '5173'] = true, -- deathweed
+    [ '5565'] = true, -- infernal stone
+    [ '5956'] = true, -- blacksmith hammer
+    [ '5976'] = true, -- guild tabard
+    [ '6217'] = true, -- copper rod
+    [ '6256'] = true, -- fishing pole
+    [ '6260'] = true, -- blue dye
+    [ '6261'] = true, -- orange dye
+    [ '6365'] = true, -- strong fishing pole
+    [ '6529'] = true, -- shiny bauble
+    [ '6530'] = true, -- nightcrawlers
+    [ '6532'] = true, -- bright baubles
+    [ '6533'] = true, -- aquadynamic fish attractor
+    [ '6953'] = true, -- verigan's fist (paladin quest)
+    [ '6966'] = true, -- elunite axe (warrior quest)
+    [ '6967'] = true, -- elunite sword (warrior quest)
+    [ '6968'] = true, -- elunite hammer (warrior quest)
+    [ '6969'] = true, -- elunite dagger (warrior quest)
+    [ '6975'] = true, -- whirlwind axe (warrior quest)
+    [ '6976'] = true, -- whirlwind warhammer (warrior quest)
+    [ '6977'] = true, -- whirlwind sword (warrior quest)
+    [ '6978'] = true, -- umbral axe (warrior quest)
+    [ '6979'] = true, -- haggard's axe (warrior quest)
+    [ '6980'] = true, -- haggard's dagger (warrior quest)
+    [ '6981'] = true, -- umbral dagger (warrior quest)
+    [ '6982'] = true, -- umbral mace (warrior quest)
+    [ '6983'] = true, -- haggard's hammer (warrior quest)
+    [ '6984'] = true, -- umbral sword (warrior quest)
+    [ '6985'] = true, -- haggard's sword (warrior quest)
+    [ '7005'] = true, -- skinning knife
+    [ '7115'] = true, -- heirloom axe (warrior quest)
+    [ '7116'] = true, -- heirloom dagger (warrior quest)
+    [ '7117'] = true, -- heirloom hammer (warrior quest)
+    [ '7118'] = true, -- heirloom sword (warrior quest)
+    [ '7298'] = true, -- blade of cunning (rogue quest)
+    [ '7326'] = true, -- thun'grim's axe (warrior quest)
+    [ '7327'] = true, -- thun'grim's dagger (warrior quest)
+    [ '7328'] = true, -- thun'grim's mace (warrior quest)
+    [ '7329'] = true, -- thun'grim's sword (warrior quest)
+    [ '8153'] = true, -- wildvine (herb)
+    [ '8343'] = true, -- heavy silken thread
+    [ '8766'] = true, -- morning glory dew
+    [ '8831'] = true, -- purple lotus (herb)
+    [ '8836'] = true, -- arthas' tears (herb)
+    [ '8838'] = true, -- sungrass (herb)
+    [ '8839'] = true, -- blindweed (herb)
+    [ '8845'] = true, -- ghost mushroom (herb)
+    [ '8846'] = true, -- gromsblood (herb)
+    [ '8923'] = true, -- essence of agony
+    [ '8924'] = true, -- dust of deterioration
+    [ '8925'] = true, -- crystal vial
+    [ '9517'] = true, -- celestial stave (mage quest)
+    ['10290'] = true, -- pink dye
+    ['10572'] = true, -- freezing shard (mage quest)
+    ['10766'] = true, -- plaguerot sprig (mage quest)
+    ['10938'] = true, -- lesser magic essence
+    ['10940'] = true, -- strange dust
+    ['11291'] = true, -- star wood
+    ['13463'] = true, -- dreamfoil (herb)
+    ['13464'] = true, -- golden sansam (herb)
+    ['13465'] = true, -- mountain silversage (herb)
+    ['13466'] = true, -- plaguebloom (herb)
+    ['13467'] = true, -- icecap (herb)
+    ['13468'] = true, -- black lotus (herb)
+    ['14341'] = true, -- rune thread
+    ['16583'] = true, -- demonic figurine
+    ['17020'] = true, -- arcane powder
+    ['17021'] = true, -- wild berries
+    ['17026'] = true, -- wild thornroot
+    ['17028'] = true, -- holy candle
+    ['17029'] = true, -- sacred candle
+    ['17030'] = true, -- ankh
+    ['17031'] = true, -- rune of teleportation
+    ['17032'] = true, -- rune of portals
+    ['17033'] = true, -- symbol of divinity
+    ['17034'] = true, -- maple seed
+    ['17035'] = true, -- stranglethorn seed
+    ['17036'] = true, -- ashwood seed
+    ['17037'] = true, -- hornbeam seed
+    ['17038'] = true, -- ironwood seed
+    ['18256'] = true, -- imbued vial
+    ['18567'] = true, -- elemental flux
+    ['19726'] = true, -- bloodvine (herb)
+    ['19727'] = true, -- blood scythe (herb)
+    ['20815'] = true, -- jeweler's kit
+    ['20824'] = true, -- simple grinder
+    ['21177'] = true, -- symbol of kings
+    ['22147'] = true, -- flintweed seed
+    ['22148'] = true, -- wild quillvine
+    ['22710'] = true, -- bloodthistle (herb)
+    ['22785'] = true, -- felweed (herb)
+    ['22786'] = true, -- dreaming glory (herb)
+    ['22787'] = true, -- ragveil (herb)
+    ['22788'] = true, -- flame cap (herb)
+    ['22789'] = true, -- terocone (herb)
+    ['22790'] = true, -- ancient lichen (herb)
+    ['22791'] = true, -- netherbloom (herb)
+    ['22792'] = true, -- nightmare vine (herb)
+    ['22793'] = true, -- mana thistle (herb)
+    ['22794'] = true, -- fel lotus (herb)
+    ['22797'] = true, -- nightmare seed (herb)
+    ['23420'] = true, -- engraved axe (warrior quest)
+    ['23421'] = true, -- engraved sword (warrior quest)
+    ['23422'] = true, -- engraved dagger (warrior quest)
+    ['23423'] = true, -- mercenary greatsword (warrior quest)
+    ['23429'] = true, -- mercenary clout (warrior quest)
+    ['23430'] = true, -- mercenary sword (warrior quest)
+    ['23431'] = true, -- mercenary stiletto (warrior quest)
+    ['23432'] = true, -- engraved greatsword (warrior quest)
+    ['24136'] = true, -- farstrider's bow (hunter quest)
+    ['24138'] = true, -- silver crossbow (hunter quest)
+    ['27860'] = true, -- purified draenic water
+    ['28399'] = true, -- filtered draenic water
+    ['30504'] = true, -- leafblade dagger (rogue quest)
+    ['30817'] = true, -- simple flour
+    ['33034'] = true, -- gordok grog
+    ['33035'] = true, -- ogre mead
+    ['33036'] = true, -- mudder's milk
+    ['38518'] = true, -- cro's apple
+}
+
 SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
 SlashCmdList["MOUNTAINEER"] = function(str)
 
     local p1, p2, cmd, arg1
     local override = true
+
+    str = str:lower()
 
     p1, p2 = str:find("^sound +on$")
     if p1 then
@@ -58,12 +251,14 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2 = str:find("^minimap +on$")
     if p1 then
+        setShowMiniMap(true)
         MinimapCluster:Show()
         return
     end
 
     p1, p2 = str:find("^minimap +off$")
     if p1 then
+        setShowMiniMap(false)
         MinimapCluster:Hide()
         return
     end
@@ -164,20 +359,29 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         if version:sub(1, 2) == '1.' then
             -- Classic / vanilla
             MAX_LEVEL = 60
+            GAME_VERSION = 1
         elseif version:sub(1, 2) == '2.' then
             -- TBC
             MAX_LEVEL = 70
+            GAME_VERSION = 2
         elseif version:sub(1, 2) == '3.' then
             -- WotLK
             MAX_LEVEL = 80
+            GAME_VERSION = 3
         else
             printWarning("This addon only designed for WoW versions 1 through 3 -- version " .. version .. " is not supported")
+            GAME_VERSION = 99
         end
         MAX_SKILL = MAX_LEVEL * 5
 
-        -- Hide the minimap. Mountaineer 2.0 rules do not allow maps.
+        -- Show or hide the minimap based on preferences.
+        -- (Mountaineer 2.0 rules do not allow maps, but we offer flexibility because of the addons buttons around the minimap.)
 
-        MinimapCluster:Hide()
+        if AcctSaved.showMiniMap then
+            MinimapCluster:Show()
+        else
+            MinimapCluster:Hide()
+        end
 
         -- Hide the left & right gryphons next to the main toolbar.
 
@@ -196,6 +400,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             printWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
             flashWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
             return
+        end
+
+        -- Make sure that every default good item is on the current good list and off the bad list.
+
+        for k,v in pairs(gDefaultGoodItems) do
+            AcctSaved.goodItems[k] = v
+            AcctSaved.badItems[k] = nil
         end
 
         local level = UnitLevel('player')
@@ -436,27 +647,28 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         local text = ...
         local level = UnitLevel('player')
 
-        -- Do the following after a short delay.
-        C_Timer.After(.3, function()
-
-            local _, _, skill = text:find("Your skill in (.*) has increased")
-            if skill ~= nil then
-                skill = skill:lower()
-                if skill == 'unarmed' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
-                    if not gSkillsAreUpToDate then
-                        local nWarnings = checkSkills(level, true, true)
-                        if nWarnings == 0 then
-                            -- If we're here, the player just transitioned to all skills being up to date.
-                            gSkillsAreUpToDate = true
-                            -- Repeat the check so the all-is-well message is displayed.
-                            checkSkills(level)
-                            -- Congratulate them with the "WORK COMPLETE" sound.
-                            PlaySoundFile(558132)
+        if level >= 5 then
+            -- Do the following after a short delay.
+            C_Timer.After(.3, function()
+                local _, _, skill = text:find("Your skill in (.*) has increased")
+                if skill ~= nil then
+                    skill = skill:lower()
+                    if skill == 'unarmed' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
+                        if not gSkillsAreUpToDate then
+                            local nWarnings = checkSkills(level, true, true)
+                            if nWarnings == 0 then
+                                -- If we're here, the player just transitioned to all skills being up to date.
+                                gSkillsAreUpToDate = true
+                                -- Repeat the check so the all-is-well message is displayed.
+                                checkSkills(level)
+                                -- Congratulate them with the "WORK COMPLETE" sound.
+                                PlaySoundFile(558132)
+                            end
                         end
                     end
                 end
-            end
-        end)
+            end)
+        end
 
     elseif event == 'UNIT_SPELLCAST_SENT' then
 
@@ -484,22 +696,25 @@ function parseItemLink(link)
     return id, text
 end
 
+-- Allows or disallows an items. Returns true if the item was found and modified. Returns false if there was an error.
 function allowOrDisallowItem(itemStr, allow, userOverride)
     local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
     if not name then
         printWarning("Item not found: " .. arg1)
-        return
+        return false
     end
     local id, text = parseItemLink(link)
     if not id or not text then
         printWarning("Unable to parse item link: \"" .. link .. '"')
-        return
+        return false
     end
     initSavedVarsIfNec()
     if allow == nil then
         -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
         AcctSaved.badItems[id .. ''] = nil
-        AcctSaved.goodItems[id .. ''] = nil
+        if not gDefaultGoodItems[id .. ''] then
+            AcctSaved.goodItems[id .. ''] = nil
+        end
         if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
     elseif allow then
         -- If the user is manually overriding an item to be good, put it on the good list.
@@ -508,10 +723,15 @@ function allowOrDisallowItem(itemStr, allow, userOverride)
         if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
     else
         -- If the user is manually overriding an item to be bad, remove it from the good list.
+        if gDefaultGoodItems[id .. ''] then
+            if userOverride then printInfo(link .. ' (' .. id .. ') is always allowed & cannot be disallowed') end
+            return false
+        end
         if userOverride then AcctSaved.goodItems[id .. ''] = nil end
         AcctSaved.badItems[id .. ''] = true
         if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
     end
+    return true
 end
 
 function setQuiet(tf)
@@ -519,198 +739,22 @@ function setQuiet(tf)
     AcctSaved.quiet = tf
 end
 
+function setShowMiniMap(tf)
+    initSavedVarsIfNec()
+    AcctSaved.showMiniMap = tf
+end
+
 function initSavedVarsIfNec(force)
     if force or AcctSaved == nil then
         AcctSaved = {
             badItems = {},
             quiet = false,
-            goodItems = {
-                [  '159'] = true, -- refreshing spring water
-                [  '765'] = true, -- silverleaf (herb)
-                [  '785'] = true, -- mageroyal (herb)
-                [ '1179'] = true, -- ice cold milk
-                [ '1205'] = true, -- melon juice
-                [ '1645'] = true, -- moonberry juice
-                [ '1708'] = true, -- sweet nectar
-                [ '2320'] = true, -- coarse thread
-                [ '2321'] = true, -- fine thread
-                [ '2324'] = true, -- bleach
-                [ '2325'] = true, -- black dye
-                [ '2447'] = true, -- peacebloom (herb)
-                [ '2449'] = true, -- earthroot (herb)
-                [ '2450'] = true, -- briarthorn (herb)
-                [ '2452'] = true, -- swiftthistle (herb)
-                [ '2453'] = true, -- bruiseweed (herb)
-                [ '2593'] = true, -- flaks of stormwind tawny
-                [ '2594'] = true, -- flagon of dwarven honeymead
-                [ '2595'] = true, -- jug of badlands bourbon
-                [ '2596'] = true, -- skin of dwarven stout
-                [ '2604'] = true, -- red dye
-                [ '2605'] = true, -- green dye
-                [ '2665'] = true, -- stormwind seasoning herbs
-                [ '2678'] = true, -- mild spices
-                [ '2692'] = true, -- hot spices
-                [ '2723'] = true, -- bottle of dalaran noir
-                [ '2880'] = true, -- weak flux
-                [ '2901'] = true, -- mining pick
-                [ '2928'] = true, -- dust of decay
-                [ '2930'] = true, -- essence of pain
-                [ '3355'] = true, -- wild steelbloom (herb)
-                [ '3356'] = true, -- kingsblood (herb)
-                [ '3357'] = true, -- liferoot (herb)
-                [ '3358'] = true, -- khadgar's whisker (herb)
-                [ '3369'] = true, -- grave moss (herb)
-                [ '3371'] = true, -- empty vial
-                [ '3371'] = true, -- mpty vial
-                [ '3372'] = true, -- leaded vial
-                [ '3419'] = true, -- red rose
-                [ '3420'] = true, -- black rose
-                [ '3421'] = true, -- simple wildflowers
-                [ '3422'] = true, -- beautiful wildflowers
-                [ '3423'] = true, -- bouquet of white roses
-                [ '3424'] = true, -- bouquet of black roses
-                [ '3466'] = true, -- strong flux
-                [ '3713'] = true, -- soothing spices
-                [ '3777'] = true, -- lethargy root
-                [ '3818'] = true, -- fadeleaf (herb)
-                [ '3819'] = true, -- wintersbite (herb)
-                [ '3820'] = true, -- stranglekelp (herb)
-                [ '3821'] = true, -- goldthorn (herb)
-                [ '3857'] = true, -- coal
-                [ '4289'] = true, -- salt
-                [ '4291'] = true, -- silken thread
-                [ '4340'] = true, -- gray dye
-                [ '4341'] = true, -- yellow dye
-                [ '4342'] = true, -- purple dye
-                [ '4470'] = true, -- simple wood
-                [ '4471'] = true, -- flint and tinder
-                [ '4536'] = true, -- shiny red apple
-                [ '4625'] = true, -- firebloom (herb)
-                [ '5042'] = true, -- red ribboned wrapping paper
-                [ '5048'] = true, -- blue ribboned wrapping paper
-                [ '5060'] = true, -- thieves' tools
-                [ '5140'] = true, -- flash powder
-                [ '5173'] = true, -- deathweed
-                [ '5565'] = true, -- infernal stone
-                [ '5956'] = true, -- blacksmith hammer
-                [ '5976'] = true, -- guild tabard
-                [ '6217'] = true, -- copper rod
-                [ '6256'] = true, -- fishing pole
-                [ '6260'] = true, -- blue dye
-                [ '6261'] = true, -- orange dye
-                [ '6365'] = true, -- strong fishing pole
-                [ '6529'] = true, -- shiny bauble
-                [ '6530'] = true, -- nightcrawlers
-                [ '6532'] = true, -- bright baubles
-                [ '6533'] = true, -- aquadynamic fish attractor
-                [ '6953'] = true, -- verigan's fist (paladin quest)
-                [ '6966'] = true, -- elunite axe (warrior quest)
-                [ '6967'] = true, -- elunite sword (warrior quest)
-                [ '6968'] = true, -- elunite hammer (warrior quest)
-                [ '6969'] = true, -- elunite dagger (warrior quest)
-                [ '6975'] = true, -- whirlwind axe (warrior quest)
-                [ '6976'] = true, -- whirlwind warhammer (warrior quest)
-                [ '6977'] = true, -- whirlwind sword (warrior quest)
-                [ '6978'] = true, -- umbral axe (warrior quest)
-                [ '6979'] = true, -- haggard's axe (warrior quest)
-                [ '6980'] = true, -- haggard's dagger (warrior quest)
-                [ '6981'] = true, -- umbral dagger (warrior quest)
-                [ '6982'] = true, -- umbral mace (warrior quest)
-                [ '6983'] = true, -- haggard's hammer (warrior quest)
-                [ '6984'] = true, -- umbral sword (warrior quest)
-                [ '6985'] = true, -- haggard's sword (warrior quest)
-                [ '7005'] = true, -- skinning knife
-                [ '7115'] = true, -- heirloom axe (warrior quest)
-                [ '7116'] = true, -- heirloom dagger (warrior quest)
-                [ '7117'] = true, -- heirloom hammer (warrior quest)
-                [ '7118'] = true, -- heirloom sword (warrior quest)
-                [ '7298'] = true, -- blade of cunning (rogue quest)
-                [ '7326'] = true, -- thun'grim's axe (warrior quest)
-                [ '7327'] = true, -- thun'grim's dagger (warrior quest)
-                [ '7328'] = true, -- thun'grim's mace (warrior quest)
-                [ '7329'] = true, -- thun'grim's sword (warrior quest)
-                [ '8153'] = true, -- wildvine (herb)
-                [ '8343'] = true, -- heavy silken thread
-                [ '8766'] = true, -- morning glory dew
-                [ '8831'] = true, -- purple lotus (herb)
-                [ '8836'] = true, -- arthas' tears (herb)
-                [ '8838'] = true, -- sungrass (herb)
-                [ '8839'] = true, -- blindweed (herb)
-                [ '8845'] = true, -- ghost mushroom (herb)
-                [ '8846'] = true, -- gromsblood (herb)
-                [ '8923'] = true, -- essence of agony
-                [ '8924'] = true, -- dust of deterioration
-                [ '8925'] = true, -- crystal vial
-                [ '9517'] = true, -- celestial stave (mage quest)
-                ['10290'] = true, -- pink dye
-                ['10572'] = true, -- freezing shard (mage quest)
-                ['10766'] = true, -- plaguerot sprig (mage quest)
-                ['10938'] = true, -- lesser magic essence
-                ['10940'] = true, -- strange dust
-                ['11291'] = true, -- star wood
-                ['13463'] = true, -- dreamfoil (herb)
-                ['13464'] = true, -- golden sansam (herb)
-                ['13465'] = true, -- mountain silversage (herb)
-                ['13466'] = true, -- plaguebloom (herb)
-                ['13467'] = true, -- icecap (herb)
-                ['13468'] = true, -- black lotus (herb)
-                ['14341'] = true, -- rune thread
-                ['16583'] = true, -- demonic figurine
-                ['17020'] = true, -- arcane powder
-                ['17021'] = true, -- wild berries
-                ['17026'] = true, -- wild thornroot
-                ['17028'] = true, -- holy candle
-                ['17029'] = true, -- sacred candle
-                ['17030'] = true, -- ankh
-                ['17031'] = true, -- rune of teleportation
-                ['17032'] = true, -- rune of portals
-                ['17033'] = true, -- symbol of divinity
-                ['17034'] = true, -- maple seed
-                ['17035'] = true, -- stranglethorn seed
-                ['17036'] = true, -- ashwood seed
-                ['17037'] = true, -- hornbeam seed
-                ['17038'] = true, -- ironwood seed
-                ['18256'] = true, -- imbued vial
-                ['18567'] = true, -- elemental flux
-                ['19726'] = true, -- bloodvine (herb)
-                ['19727'] = true, -- blood scythe (herb)
-                ['20815'] = true, -- jeweler's kit
-                ['20824'] = true, -- simple grinder
-                ['21177'] = true, -- symbol of kings
-                ['22147'] = true, -- flintweed seed
-                ['22148'] = true, -- wild quillvine
-                ['22710'] = true, -- bloodthistle (herb)
-                ['22785'] = true, -- felweed (herb)
-                ['22786'] = true, -- dreaming glory (herb)
-                ['22787'] = true, -- ragveil (herb)
-                ['22788'] = true, -- flame cap (herb)
-                ['22789'] = true, -- terocone (herb)
-                ['22790'] = true, -- ancient lichen (herb)
-                ['22791'] = true, -- netherbloom (herb)
-                ['22792'] = true, -- nightmare vine (herb)
-                ['22793'] = true, -- mana thistle (herb)
-                ['22794'] = true, -- fel lotus (herb)
-                ['22797'] = true, -- nightmare seed (herb)
-                ['23420'] = true, -- engraved axe (warrior quest)
-                ['23421'] = true, -- engraved sword (warrior quest)
-                ['23422'] = true, -- engraved dagger (warrior quest)
-                ['23423'] = true, -- mercenary greatsword (warrior quest)
-                ['23429'] = true, -- mercenary clout (warrior quest)
-                ['23430'] = true, -- mercenary sword (warrior quest)
-                ['23431'] = true, -- mercenary stiletto (warrior quest)
-                ['23432'] = true, -- engraved greatsword (warrior quest)
-                ['24136'] = true, -- farstrider's bow (hunter quest)
-                ['24138'] = true, -- silver crossbow (hunter quest)
-                ['27860'] = true, -- purified draenic water
-                ['28399'] = true, -- filtered draenic water
-                ['30504'] = true, -- leafblade dagger (rogue quest)
-                ['30817'] = true, -- simple flour
-                ['33034'] = true, -- gordok grog
-                ['33035'] = true, -- ogre mead
-                ['33036'] = true, -- mudder's milk
-                ['38518'] = true, -- cro's apple
-            },
+            goodItems = {},
+            showMiniMap = false,
         }
+        for k,v in pairs(gDefaultGoodItems) do
+            AcctSaved.goodItems[k] = v
+        end
     end
     if force or CharSaved == nil then
         CharSaved = {
@@ -1003,7 +1047,6 @@ function mountaineersCanUseNonLootedItem(itemId)
         end
     end
     if classId == Enum.ItemClass.Armor then
-        --print("Shields, librams, idols, totems, sigils, relics are allowed")
         if subclassId == Enum.ItemArmorSubclass.Shield
         or subclassId == Enum.ItemArmorSubclass.Libram
         or subclassId == Enum.ItemArmorSubclass.Idol
@@ -1011,7 +1054,19 @@ function mountaineersCanUseNonLootedItem(itemId)
         or subclassId == Enum.ItemArmorSubclass.Sigil
         or subclassId == Enum.ItemArmorSubclass.Relic
         then
+            --print("Shields, librams, idols, totems, sigils, relics are allowed")
             return true
+        end
+        if subclassId == Enum.ItemArmorSubclass.Generic then
+            if (equipLoc == INVTYPE_FINGER and GAME_VERSION >= 2)
+            or (equipLoc == INVTYPE_NECK and GAME_VERSION >= 2)
+            then
+                --print("Armor that can be created via jewelcrafting is not allowed")
+                return false
+            else
+                --print("Generic armor items are allowed (Spellstones, Firestones, Trinkets, Rings and Necks)")
+                return true
+            end
         end
     end
     if lname:find("^pattern: ") or lname:find("^formula: ") or lname:find("^recipe: ") or lname:find("^design: ") or lname:find("^plans: ") then
