@@ -7,6 +7,8 @@ http://tinyurl.com/hc-mountaineers
 --------------------------------------------------------------------------------
 --]]
 
+local ADDON_VERSION = '2.0.3' -- This should be the same as in the 'Mountaineer.toc' file.
+
 -- These function as constants, but upon initialization they may be reset based on the current game version.
 local GAME_VERSION = 99 -- 1 = Classic Era or SoM, 2 = TBC, 3 = WotLK
 local MAX_LEVEL = 60
@@ -309,6 +311,14 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2 = str:find("^version$")
+    if p1 ~= nil then
+        printGood(ADDON_VERSION)
+        return
+    end
+
+    print(colorText('ffff00', "/mtn version"))
+    print("     Shows the current version of the addon.")
     print(colorText('ffff00', "/mtn sound on/off"))
     print("     Turns addon sounds on or off.")
     print(colorText('ffff00', "/mtn minimap on/off"))
@@ -355,7 +365,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         -- Check the WoW version and set constants accordingly.
 
-        local version = GetBuildInfo()
+        local version, build, date, tocversion = GetBuildInfo()
         if version:sub(1, 2) == '1.' then
             -- Classic / vanilla
             MAX_LEVEL = 60
@@ -372,6 +382,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             printWarning("This addon only designed for WoW versions 1 through 3 -- version " .. version .. " is not supported")
             GAME_VERSION = 99
         end
+
         MAX_SKILL = MAX_LEVEL * 5
 
         -- Show or hide the minimap based on preferences.
@@ -421,9 +432,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Do the following after a delay of a few seconds.
             C_Timer.After(seconds, function()
 
-                -- Look at each character slot...
+                -- Look at each weapon slot (16=mainhand, 17=offhand, 18=ranged)...
+                -- (Prior to 2022-12-13, all items were stripped. Now it's just weapons.)
                 local nUnequipped = 0
-                for slot = 0, 18 do
+                for slot = 16, 18 do
                     local itemId = GetInventoryItemID("player", slot)
                     -- If there's an item in the slot, the player must remove it.
                     if itemId ~= nil and itemId ~= 0 then

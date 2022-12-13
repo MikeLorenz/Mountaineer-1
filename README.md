@@ -1,6 +1,6 @@
 # Mountaineer
 
-A World of Warcraft addon to support the Hardcore [Mountaineer Challenge](http://tinyurl.com/hc-mountaineers). Designed for Season of Mastery.
+A World of Warcraft addon to support the Hardcore [Mountaineer Challenge](http://tinyurl.com/hc-mountaineers). Supports Classic Era, Season of Mastery, TBC, or WotLK.
 
 This addon created by ManchegoMike ([Twitch](https://www.twitch.tv/ManchegoMike), [GitHub](https://github.com/ManchegoMike))
 
@@ -47,9 +47,13 @@ All of the following settings are global to your WoW account, so if you turn off
 
 Wherever you see `{id/name/link}`, you can specify by id# or name or link. To specify a link, type `/mtn allow` followed by a space, then SHIFT-click the actual item and it will paste the link into the text you're typing.
 
+### /mtn version
+
+Shows the current version of the addon.
+
 ### /mtn sound on/off
 
-Turns addon sounds on or off
+Turns addon sounds on or off.
 
 ### /mtn check
 
