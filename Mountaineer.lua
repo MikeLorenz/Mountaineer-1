@@ -36,6 +36,9 @@ local CLASS_DEMONHUNTER = 12
 
 local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
 
+local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
+local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
+
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
 local gSkillsAreUpToDate = false
 
@@ -229,6 +232,369 @@ local gDefaultGoodItems = {
     ['38518'] = true, -- cro's apple
 }
 
+--------------------------------------------------------------------------------
+-- Local functions
+--------------------------------------------------------------------------------
+
+local function parseItemLink(link)
+    -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
+    local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
+    return id, text
+end
+
+local function initSavedVarsIfNec(force)
+    if force or AcctSaved == nil then
+        AcctSaved = {
+            badItems = {},
+            quiet = false,
+            goodItems = {},
+            showMiniMap = false,
+        }
+        for k,v in pairs(gDefaultGoodItems) do
+            AcctSaved.goodItems[k] = v
+        end
+    end
+    if force or CharSaved == nil then
+        CharSaved = {
+            xpFromLastGain = 0,
+        }
+    end
+end
+
+-- Allows or disallows an items. Returns true if the item was found and modified. Returns false if there was an error.
+local function allowOrDisallowItem(itemStr, allow, userOverride)
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
+    if not name then
+        printWarning("Item not found: " .. arg1)
+        return false
+    end
+    local id, text = parseItemLink(link)
+    if not id or not text then
+        printWarning("Unable to parse item link: \"" .. link .. '"')
+        return false
+    end
+    initSavedVarsIfNec()
+    if allow == nil then
+        -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
+        AcctSaved.badItems[id .. ''] = nil
+        if not gDefaultGoodItems[id .. ''] then
+            AcctSaved.goodItems[id .. ''] = nil
+        end
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
+    elseif allow then
+        -- If the user is manually overriding an item to be good, put it on the good list.
+        if userOverride then AcctSaved.goodItems[id .. ''] = true end
+        AcctSaved.badItems[id .. ''] = nil
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
+    else
+        -- If the user is manually overriding an item to be bad, remove it from the good list.
+        if gDefaultGoodItems[id .. ''] then
+            if userOverride then printInfo(link .. ' (' .. id .. ') is always allowed & cannot be disallowed') end
+            return false
+        end
+        if userOverride then AcctSaved.goodItems[id .. ''] = nil end
+        AcctSaved.badItems[id .. ''] = true
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
+    end
+    return true
+end
+
+local function setQuiet(tf)
+    initSavedVarsIfNec()
+    AcctSaved.quiet = tf
+end
+
+local function setShowMiniMap(tf)
+    initSavedVarsIfNec()
+    AcctSaved.showMiniMap = tf
+end
+
+local function getXPFromLastGain()
+    initSavedVarsIfNec()
+    return CharSaved.xpFromLastGain
+end
+
+local function setXPFromLastGain(xp)
+    initSavedVarsIfNec()
+    CharSaved.xpFromLastGain = xp
+end
+
+local function colorText(hex6, text)
+    return "|cFF" .. hex6 .. text .. "|r"
+end
+
+local function flashWarning(text)
+    UIErrorsFrame:AddMessage(text, 1.0, 0.5, 0.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+local function flashInfo(text)
+    UIErrorsFrame:AddMessage(text, 1.0, 1.0, 1.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+local function flashGood(text)
+    UIErrorsFrame:AddMessage(text, 0.0, 1.0, 0.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+local function printInfo(text)
+    print(colorText('c0c0c0', "MOUNTAINEER: ") .. colorText('ffffff', text))
+end
+
+local function printWarning(text)
+    print(colorText('ff0000', "MOUNTAINEER: ") .. colorText('ff8000', text))
+end
+
+local function printGood(text)
+    print(colorText('0080FF', "MOUNTAINEER: ") .. colorText('00ff00', text))
+end
+
+local function playSound(path)
+    initSavedVarsIfNec()
+    if not AcctSaved.quiet then
+        PlaySoundFile(path, "Master")
+    end
+end
+
+-- This function is used to decide on an item the first time it's looted.
+local function mountaineersCanUseNonLootedItem(itemId)
+    itemId = tostring(itemId)
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+    --print(" name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice, " classId=", classId, " subclassId=", subclassId, " bindType=", bindType, " expacId=", expacId, " setId=", setId, " isCraftingReagent=", isCraftingReagent)
+    local lname = name:lower();
+    if classId == Enum.ItemClass.Questitem then
+        --print("Quest items are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Tradegoods then
+        --print("Trade goods are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Recipe then
+        --print("Recipes are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Reagent then
+        --print("Reagents are allowed")
+        return true
+    end
+    if isCraftingReagent then
+        --print("Crafting reagents are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Gem then
+        --print("Gems are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Glyph then
+        --print("Glyphs are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.ItemEnhancement then
+        --print("Item enhancements are allowed")
+        return true
+    end
+    if classId == Enum.ItemClass.Weapon then
+        --print("Skinning knives, mining picks, fishing poles, wands, staves, polearms are allowed")
+        if subclassId == Enum.ItemWeaponSubclass.Generic
+        or subclassId == Enum.ItemWeaponSubclass.Fishingpole
+        or subclassId == Enum.ItemWeaponSubclass.Wand
+        or subclassId == Enum.ItemWeaponSubclass.Staff
+        or subclassId == Enum.ItemWeaponSubclass.Polearm
+        or subclassId == Enum.ItemWeaponSubclass.Unarmed
+        then
+            return true
+        end
+    end
+    if classId == Enum.ItemClass.Armor then
+        if subclassId == Enum.ItemArmorSubclass.Shield
+        or subclassId == Enum.ItemArmorSubclass.Libram
+        or subclassId == Enum.ItemArmorSubclass.Idol
+        or subclassId == Enum.ItemArmorSubclass.Totem
+        or subclassId == Enum.ItemArmorSubclass.Sigil
+        or subclassId == Enum.ItemArmorSubclass.Relic
+        then
+            --print("Shields, librams, idols, totems, sigils, relics are allowed")
+            return true
+        end
+        if subclassId == Enum.ItemArmorSubclass.Generic then
+            if (equipLoc == INVTYPE_FINGER and GAME_VERSION >= 2)
+            or (equipLoc == INVTYPE_NECK and GAME_VERSION >= 2)
+            then
+                --print("Armor that can be created via jewelcrafting is not allowed")
+                return false
+            else
+                --print("Generic armor items are allowed (Spellstones, Firestones, Trinkets, Rings and Necks)")
+                return true
+            end
+        end
+    end
+    if lname:find("^pattern: ") or lname:find("^formula: ") or lname:find("^recipe: ") or lname:find("^design: ") or lname:find("^plans: ") then
+        --print("Recipes etc are allowed")
+        return true
+    end
+    if lname:find("^inscription of ") then
+        --print("Aldor/Scryer inscriptions allowed")
+        return true
+    end
+    --print("Fell through to return false")
+    return false
+end
+
+-- Checks skills. Returns (warningCount, challengeIsOver).
+local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
+    -- These are the only skills we care about.
+    local skills = {
+        ['unarmed']   = { rank = 0, name = 'Unarmed' },
+        ['cooking']   = { rank = 0, name = 'Cooking' },
+        ['fishing']   = { rank = 0, name = 'Fishing' },
+        ['first aid'] = { rank = 0, name = 'First Aid' },
+    }
+
+    -- Gather data on the above skills.
+    for skillIndex = 1, GetNumSkillLines() do
+        local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(skillIndex)
+        if not isHeader then
+            if skills[skillName:lower()] ~= nil then
+                skills[skillName:lower()].rank = skillRank
+            end
+        end
+    end
+
+    local warningCount = 0
+    local challengeIsOver = false
+
+    -- Check the skill ranks against the expected rank.
+    for _, skill in pairs(skills) do
+        if skill.rank == 0 then
+            if playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 3 then
+                warningCount = warningCount + 1
+                if not hideWarnings then
+                    printWarning("You must train " .. skill.name .. " and level it to " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
+                    flashWarning("You must train " .. skill.name)
+                end
+            end
+        else
+            if skill.name == "Unarmed" then
+                if playerLevel >= 5 then
+                    local minimumRank = playerLevel * 5 - 15
+                    local minimumRankAtNextLevel = minimumRank + 5
+                    if skill.rank < minimumRank then
+                        warningCount = warningCount + 1
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
+                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            playSound(ERROR_SOUND_FILE)
+                        end
+                        challengeIsOver = true
+                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
+                        -- Warn if dinging will invalidate the run.
+                        warningCount = warningCount + 1
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                        end
+                    end
+                end
+            else
+                local minimumRank = playerLevel * 5
+                local minimumRankAtNextLevel = minimumRank + 5
+                --print(" skill.name=", skill.name, " skill.rank=", skill.rank, " minimumRank=", minimumRank, " minimumRankAtNextLevel=", minimumRankAtNextLevel)
+                if FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 3 then
+                    -- Don't check if more than 3 levels away from the first required level.
+                elseif FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 1 then
+                    if skill.rank < FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK then
+                        warningCount = warningCount + 1
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
+                        end
+                    end
+                else
+                    if skill.rank < minimumRank and playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL then
+                        -- At this level the player must be at least the minimum rank.
+                        warningCount = warningCount + 1
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
+                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                            playSound(ERROR_SOUND_FILE)
+                        end
+                        challengeIsOver = true
+                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
+                        -- Warn if dinging will invalidate the run.
+                        warningCount = warningCount + 1
+                        if not hideWarnings then
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if warningCount == 0 and not hideMessageIfAllIsWell then
+        printGood("All skills are up to date")
+    end
+
+    return warningCount, challengeIsOver
+end
+
+-- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
+local function itemIsAllowed(itemId, evaluationFunction)
+
+    if itemId == nil or itemId == 0 then return true end
+    --print("itemIsAllowed("..itemId..")")
+
+    itemId = tostring(itemId)
+    initSavedVarsIfNec()
+
+    -- Anything on the good list overrides anything on the bad list because the good list is only set by the player.
+    if AcctSaved.goodItems[itemId] then
+        --print("On the nice list")
+        return true
+    end
+
+    -- If it's on the bad list, it's bad.
+    if AcctSaved.badItems[itemId] then
+        --print("On the naughty list")
+        return false
+    end
+
+    if evaluationFunction then
+        -- If there's an additional evaluation function, use that.
+        local ret = evaluationFunction(itemId)
+        --print("Evaluation function returned ", ret)
+        return ret
+    else
+        -- If no additional evaluation is required, then assume it's allowed.
+        --print("Fell through to return true")
+        return true
+    end
+end
+
+local function checkEquippedItems()
+    local warningCount = 0
+    for slot = 0, 18 do
+        local itemId = GetInventoryItemID("player", slot)
+        -- If there's an item in the slot, check it.
+        if not itemIsAllowed(itemId) then
+            warningCount = warningCount + 1
+            local _, link = GetItemInfo(itemId)
+            printWarning(link .. " should be unequipped")
+        end
+    end
+
+    if warningCount == 0 then
+        printGood("All equipped items are OK")
+    else
+        playSound(ERROR_SOUND_FILE)
+    end
+
+    return warningCount
+end
+
+--------------------------------------------------------------------------------
+-- Parsing command line
+--------------------------------------------------------------------------------
+
 SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
 SlashCmdList["MOUNTAINEER"] = function(str)
 
@@ -341,8 +707,9 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
 end
 
-local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
-local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
+--------------------------------------------------------------------------------
+-- Event processing
+--------------------------------------------------------------------------------
 
 local EventFrame = CreateFrame('frame', 'EventFrame')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
@@ -701,422 +1068,3 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     end
 
 end)
-
-function parseItemLink(link)
-    -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
-    local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
-    return id, text
-end
-
--- Allows or disallows an items. Returns true if the item was found and modified. Returns false if there was an error.
-function allowOrDisallowItem(itemStr, allow, userOverride)
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
-    if not name then
-        printWarning("Item not found: " .. arg1)
-        return false
-    end
-    local id, text = parseItemLink(link)
-    if not id or not text then
-        printWarning("Unable to parse item link: \"" .. link .. '"')
-        return false
-    end
-    initSavedVarsIfNec()
-    if allow == nil then
-        -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
-        AcctSaved.badItems[id .. ''] = nil
-        if not gDefaultGoodItems[id .. ''] then
-            AcctSaved.goodItems[id .. ''] = nil
-        end
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
-    elseif allow then
-        -- If the user is manually overriding an item to be good, put it on the good list.
-        if userOverride then AcctSaved.goodItems[id .. ''] = true end
-        AcctSaved.badItems[id .. ''] = nil
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
-    else
-        -- If the user is manually overriding an item to be bad, remove it from the good list.
-        if gDefaultGoodItems[id .. ''] then
-            if userOverride then printInfo(link .. ' (' .. id .. ') is always allowed & cannot be disallowed') end
-            return false
-        end
-        if userOverride then AcctSaved.goodItems[id .. ''] = nil end
-        AcctSaved.badItems[id .. ''] = true
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
-    end
-    return true
-end
-
-function setQuiet(tf)
-    initSavedVarsIfNec()
-    AcctSaved.quiet = tf
-end
-
-function setShowMiniMap(tf)
-    initSavedVarsIfNec()
-    AcctSaved.showMiniMap = tf
-end
-
-function initSavedVarsIfNec(force)
-    if force or AcctSaved == nil then
-        AcctSaved = {
-            badItems = {},
-            quiet = false,
-            goodItems = {},
-            showMiniMap = false,
-        }
-        for k,v in pairs(gDefaultGoodItems) do
-            AcctSaved.goodItems[k] = v
-        end
-    end
-    if force or CharSaved == nil then
-        CharSaved = {
-            xpFromLastGain = 0,
-        }
-    end
-end
-
-function getXPFromLastGain()
-    initSavedVarsIfNec()
-    return CharSaved.xpFromLastGain
-end
-
-function setXPFromLastGain(xp)
-    initSavedVarsIfNec()
-    CharSaved.xpFromLastGain = xp
-end
-
-function string:beginsWith(token)
-    return string.sub(self, 1, token:len()) == token
-end
-
-function colorText(hex6, text)
-    return "|cFF" .. hex6 .. text .. "|r"
-end
-
-function flashWarning(text)
-    UIErrorsFrame:AddMessage(text, 1.0, 0.5, 0.0, GetChatTypeIndex('SYSTEM'), 8);
-end
-
-function flashInfo(text)
-    UIErrorsFrame:AddMessage(text, 1.0, 1.0, 1.0, GetChatTypeIndex('SYSTEM'), 8);
-end
-
-function flashGood(text)
-    UIErrorsFrame:AddMessage(text, 0.0, 1.0, 0.0, GetChatTypeIndex('SYSTEM'), 8);
-end
-
-function printInfo(text)
-    print(colorText('c0c0c0', "MOUNTAINEER: ") .. colorText('ffffff', text))
-end
-
-function printWarning(text)
-    print(colorText('ff0000', "MOUNTAINEER: ") .. colorText('ff8000', text))
-end
-
-function printGood(text)
-    print(colorText('0080FF', "MOUNTAINEER: ") .. colorText('00ff00', text))
-end
-
--- Checks skills. Returns (warningCount, challengeIsOver).
-function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
-    -- These are the only skills we care about.
-    local skills = {
-        ['unarmed']   = { rank = 0, name = 'Unarmed' },
-        ['cooking']   = { rank = 0, name = 'Cooking' },
-        ['fishing']   = { rank = 0, name = 'Fishing' },
-        ['first aid'] = { rank = 0, name = 'First Aid' },
-    }
-
-    -- Gather data on the above skills.
-    for skillIndex = 1, GetNumSkillLines() do
-        local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(skillIndex)
-        if not isHeader then
-            if skills[skillName:lower()] ~= nil then
-                skills[skillName:lower()].rank = skillRank
-            end
-        end
-    end
-
-    local warningCount = 0
-    local challengeIsOver = false
-
-    -- Check the skill ranks against the expected rank.
-    for _, skill in pairs(skills) do
-        if skill.rank == 0 then
-            if playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 3 then
-                warningCount = warningCount + 1
-                if not hideWarnings then
-                    printWarning("You must train " .. skill.name .. " and level it to " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
-                    flashWarning("You must train " .. skill.name)
-                end
-            end
-        else
-            if skill.name == "Unarmed" then
-                if playerLevel >= 5 then
-                    local minimumRank = playerLevel * 5 - 15
-                    local minimumRankAtNextLevel = minimumRank + 5
-                    if skill.rank < minimumRank then
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
-                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            playSound(ERROR_SOUND_FILE)
-                        end
-                        challengeIsOver = true
-                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
-                        -- Warn if dinging will invalidate the run.
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
-                        end
-                    end
-                end
-            else
-                local minimumRank = playerLevel * 5
-                local minimumRankAtNextLevel = minimumRank + 5
-                --print(" skill.name=", skill.name, " skill.rank=", skill.rank, " minimumRank=", minimumRank, " minimumRankAtNextLevel=", minimumRankAtNextLevel)
-                if FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 3 then
-                    -- Don't check if more than 3 levels away from the first required level.
-                elseif FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 1 then
-                    if skill.rank < FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK then
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
-                        end
-                    end
-                else
-                    if skill.rank < minimumRank and playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL then
-                        -- At this level the player must be at least the minimum rank.
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
-                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            playSound(ERROR_SOUND_FILE)
-                        end
-                        challengeIsOver = true
-                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
-                        -- Warn if dinging will invalidate the run.
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    if warningCount == 0 and not hideMessageIfAllIsWell then
-        printGood("All skills are up to date")
-    end
-
-    return warningCount, challengeIsOver
-end
-
-function checkEquippedItems()
-    local warningCount = 0
-    for slot = 0, 18 do
-        local itemId = GetInventoryItemID("player", slot)
-        -- If there's an item in the slot, check it.
-        if not itemIsAllowed(itemId) then
-            warningCount = warningCount + 1
-            local _, link = GetItemInfo(itemId)
-            printWarning(link .. " should be unequipped")
-        end
-    end
-
-    if warningCount == 0 then
-        printGood("All equipped items are OK")
-    else
-        playSound(ERROR_SOUND_FILE)
-    end
-
-    return warningCount
-end
-
-function getFreeSlotCount()
-    local nFree = 0
-    for bagId = 0, NUM_BAG_SLOTS do
-        --print(" bagId=", bagId)
-        local nSlots = GetContainerNumSlots(bagId)
-        if nSlots > 0 then
-            --if bagId > 0 then
-            --    local invId = ContainerIDToInventoryID(bagId)
-            --    local bagLink = GetInventoryItemLink("player", invId)
-            --    --print(" bagLink=", bagLink)
-            --end
-            local bagFreeSlots, bagType = GetContainerNumFreeSlots(bagId)
-            if bagType == 0 then
-                nFree = nFree + bagFreeSlots
-            end
-        end
-    end
-    --print(" nFree=", nFree)
-    return nFree
-end
-
--- Returns the number of equipped bags, NOT INCLUDING the default backpack. Valid return range is 0-4.
-function getBagCount()
-    local nBags = 0
-    for bagId = 1, NUM_BAG_SLOTS do
-        --print(" bagId=", bagId)
-        local nSlots = GetContainerNumSlots(bagId)
-        if nSlots > 0 then
-            nBags = nBags + 1
-        end
-    end
-    --print(" nBags=", nBags)
-    return nBags
-end
-
-function allBagSlotsAreFilled()
-    return getBagCount() == 4
-end
-
--- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
-function itemIsAllowed(itemId, evaluationFunction)
-
-    if itemId == nil or itemId == 0 then return true end
-    --print("itemIsAllowed("..itemId..")")
-
-    itemId = tostring(itemId)
-    initSavedVarsIfNec()
-
-    -- Anything on the good list overrides anything on the bad list because the good list is only set by the player.
-    if AcctSaved.goodItems[itemId] then
-        --print("On the nice list")
-        return true
-    end
-
-    -- If it's on the bad list, it's bad.
-    if AcctSaved.badItems[itemId] then
-        --print("On the naughty list")
-        return false
-    end
-
-    if evaluationFunction then
-        -- If there's an additional evaluation function, use that.
-        local ret = evaluationFunction(itemId)
-        --print("Evaluation function returned ", ret)
-        return ret
-    else
-        -- If no additional evaluation is required, then assume it's allowed.
-        --print("Fell through to return true")
-        return true
-    end
-end
-
--- This function is used to decide on an item the first time it's looted.
-function mountaineersCanUseNonLootedItem(itemId)
-    itemId = tostring(itemId)
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
-    --print(" name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice, " classId=", classId, " subclassId=", subclassId, " bindType=", bindType, " expacId=", expacId, " setId=", setId, " isCraftingReagent=", isCraftingReagent)
-    local lname = name:lower();
-    if classId == Enum.ItemClass.Questitem then
-        --print("Quest items are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Tradegoods then
-        --print("Trade goods are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Recipe then
-        --print("Recipes are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Reagent then
-        --print("Reagents are allowed")
-        return true
-    end
-    if isCraftingReagent then
-        --print("Crafting reagents are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Gem then
-        --print("Gems are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Glyph then
-        --print("Glyphs are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.ItemEnhancement then
-        --print("Item enhancements are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Weapon then
-        --print("Skinning knives, mining picks, fishing poles, wands, staves, polearms are allowed")
-        if subclassId == Enum.ItemWeaponSubclass.Generic
-        or subclassId == Enum.ItemWeaponSubclass.Fishingpole
-        or subclassId == Enum.ItemWeaponSubclass.Wand
-        or subclassId == Enum.ItemWeaponSubclass.Staff
-        or subclassId == Enum.ItemWeaponSubclass.Polearm
-        or subclassId == Enum.ItemWeaponSubclass.Unarmed
-        then
-            return true
-        end
-    end
-    if classId == Enum.ItemClass.Armor then
-        if subclassId == Enum.ItemArmorSubclass.Shield
-        or subclassId == Enum.ItemArmorSubclass.Libram
-        or subclassId == Enum.ItemArmorSubclass.Idol
-        or subclassId == Enum.ItemArmorSubclass.Totem
-        or subclassId == Enum.ItemArmorSubclass.Sigil
-        or subclassId == Enum.ItemArmorSubclass.Relic
-        then
-            --print("Shields, librams, idols, totems, sigils, relics are allowed")
-            return true
-        end
-        if subclassId == Enum.ItemArmorSubclass.Generic then
-            if (equipLoc == INVTYPE_FINGER and GAME_VERSION >= 2)
-            or (equipLoc == INVTYPE_NECK and GAME_VERSION >= 2)
-            then
-                --print("Armor that can be created via jewelcrafting is not allowed")
-                return false
-            else
-                --print("Generic armor items are allowed (Spellstones, Firestones, Trinkets, Rings and Necks)")
-                return true
-            end
-        end
-    end
-    if lname:find("^pattern: ") or lname:find("^formula: ") or lname:find("^recipe: ") or lname:find("^design: ") or lname:find("^plans: ") then
-        --print("Recipes etc are allowed")
-        return true
-    end
-    if lname:find("^inscription of ") then
-        --print("Aldor/Scryer inscriptions allowed")
-        return true
-    end
-    --print("Fell through to return false")
-    return false
-end
-
-function playerHasItem(arg)
-    if type(arg) == 'function' then
-        for bag = 0, NUM_BAG_SLOTS do
-            for slot = 1, GetContainerNumSlots(bag) do
-                if arg(GetContainerItemID(bag, slot)) then
-                    return true
-                end
-            end
-        end
-    elseif type(arg) == 'number' then
-        for bag = 0, NUM_BAG_SLOTS do
-            for slot = 1, GetContainerNumSlots(bag) do
-                if GetContainerItemID(bag, slot) == arg then
-                    return true
-                end
-            end
-        end
-    end
-    return false
-end
-
-function playSound(path)
-    initSavedVarsIfNec()
-    if not AcctSaved.quiet then
-        PlaySoundFile(path, "Master")
-    end
-end
