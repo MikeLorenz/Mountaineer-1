@@ -236,12 +236,6 @@ local gDefaultGoodItems = {
 -- Local functions
 --------------------------------------------------------------------------------
 
-local function parseItemLink(link)
-    -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
-    local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
-    return id, text
-end
-
 local function initSavedVarsIfNec(force)
     if force or AcctSaved == nil then
         AcctSaved = {
@@ -261,42 +255,10 @@ local function initSavedVarsIfNec(force)
     end
 end
 
--- Allows or disallows an items. Returns true if the item was found and modified. Returns false if there was an error.
-local function allowOrDisallowItem(itemStr, allow, userOverride)
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
-    if not name then
-        printWarning("Item not found: " .. arg1)
-        return false
-    end
-    local id, text = parseItemLink(link)
-    if not id or not text then
-        printWarning("Unable to parse item link: \"" .. link .. '"')
-        return false
-    end
-    initSavedVarsIfNec()
-    if allow == nil then
-        -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
-        AcctSaved.badItems[id .. ''] = nil
-        if not gDefaultGoodItems[id .. ''] then
-            AcctSaved.goodItems[id .. ''] = nil
-        end
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
-    elseif allow then
-        -- If the user is manually overriding an item to be good, put it on the good list.
-        if userOverride then AcctSaved.goodItems[id .. ''] = true end
-        AcctSaved.badItems[id .. ''] = nil
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
-    else
-        -- If the user is manually overriding an item to be bad, remove it from the good list.
-        if gDefaultGoodItems[id .. ''] then
-            if userOverride then printInfo(link .. ' (' .. id .. ') is always allowed & cannot be disallowed') end
-            return false
-        end
-        if userOverride then AcctSaved.goodItems[id .. ''] = nil end
-        AcctSaved.badItems[id .. ''] = true
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
-    end
-    return true
+local function parseItemLink(link)
+    -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
+    local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
+    return id, text
 end
 
 local function setQuiet(tf)
@@ -352,6 +314,44 @@ local function playSound(path)
     if not AcctSaved.quiet then
         PlaySoundFile(path, "Master")
     end
+end
+
+-- Allows or disallows an items. Returns true if the item was found and modified. Returns false if there was an error.
+local function allowOrDisallowItem(itemStr, allow, userOverride)
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
+    if not name then
+        printWarning("Item not found: " .. arg1)
+        return false
+    end
+    local id, text = parseItemLink(link)
+    if not id or not text then
+        printWarning("Unable to parse item link: \"" .. link .. '"')
+        return false
+    end
+    initSavedVarsIfNec()
+    if allow == nil then
+        -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
+        AcctSaved.badItems[id .. ''] = nil
+        if not gDefaultGoodItems[id .. ''] then
+            AcctSaved.goodItems[id .. ''] = nil
+        end
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
+    elseif allow then
+        -- If the user is manually overriding an item to be good, put it on the good list.
+        if userOverride then AcctSaved.goodItems[id .. ''] = true end
+        AcctSaved.badItems[id .. ''] = nil
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
+    else
+        -- If the user is manually overriding an item to be bad, remove it from the good list.
+        if gDefaultGoodItems[id .. ''] then
+            if userOverride then printInfo(link .. ' (' .. id .. ') is always allowed & cannot be disallowed') end
+            return false
+        end
+        if userOverride then AcctSaved.goodItems[id .. ''] = nil end
+        AcctSaved.badItems[id .. ''] = true
+        if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
+    end
+    return true
 end
 
 -- This function is used to decide on an item the first time it's looted.
@@ -440,21 +440,25 @@ local function mountaineersCanUseNonLootedItem(itemId)
 end
 
 -- Checks skills. Returns (warningCount, challengeIsOver).
+-- There are 2 kinds of warnings. (1) WARNINGS that will end your run if you don't correct
+-- the situation before your next ding. (2) REMINDERS that appear before level 9 reminding
+-- you to skill up before you ding 10.
 local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
     -- These are the only skills we care about.
     local skills = {
         ['unarmed']   = { rank = 0, name = 'Unarmed' },
-        ['cooking']   = { rank = 0, name = 'Cooking' },
-        ['fishing']   = { rank = 0, name = 'Fishing' },
         ['first aid'] = { rank = 0, name = 'First Aid' },
+        ['fishing']   = { rank = 0, name = 'Fishing' },
+        ['cooking']   = { rank = 0, name = 'Cooking' },
     }
 
     -- Gather data on the above skills.
     for skillIndex = 1, GetNumSkillLines() do
         local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(skillIndex)
         if not isHeader then
-            if skills[skillName:lower()] ~= nil then
-                skills[skillName:lower()].rank = skillRank
+            local name = skillName:lower()
+            if skills[name] ~= nil then
+                skills[name].rank = skillRank
             end
         end
     end
@@ -465,64 +469,68 @@ local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
     -- Check the skill ranks against the expected rank.
     for _, skill in pairs(skills) do
         if skill.rank == 0 then
+            -- The player has not yet trained this skill.
             if playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 3 then
-                warningCount = warningCount + 1
+                -- This is a REMINDER, not a WARNING, so we don't increment warningCount.
                 if not hideWarnings then
                     printWarning("You must train " .. skill.name .. " and level it to " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
                     flashWarning("You must train " .. skill.name)
                 end
             end
         else
+            -- The player has trained this skill.
             if skill.name == "Unarmed" then
-                if playerLevel >= 5 then
-                    local minimumRank = playerLevel * 5 - 15
-                    local minimumRankAtNextLevel = minimumRank + 5
-                    if skill.rank < minimumRank then
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
-                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            playSound(ERROR_SOUND_FILE)
-                        end
-                        challengeIsOver = true
-                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
-                        -- Warn if dinging will invalidate the run.
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
-                        end
+                local rankRequiredAtThisLevel = playerLevel * 5 - 15
+                local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+                if skill.rank < rankRequiredAtThisLevel then
+                    warningCount = warningCount + 1
+                    if not hideWarnings then
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. rankRequiredAtThisLevel .. ".")
+                        printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                        flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                        playSound(ERROR_SOUND_FILE)
+                    end
+                    challengeIsOver = true
+                elseif skill.rank < rankRequiredAtNextLevel and playerLevel < MAX_LEVEL then
+                    -- Warn if dinging will invalidate the run.
+                    warningCount = warningCount + 1
+                    if not hideWarnings then
+                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
                     end
                 end
             else
-                local minimumRank = playerLevel * 5
-                local minimumRankAtNextLevel = minimumRank + 5
-                --print(" skill.name=", skill.name, " skill.rank=", skill.rank, " minimumRank=", minimumRank, " minimumRankAtNextLevel=", minimumRankAtNextLevel)
-                if FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 3 then
+                local rankRequiredAtThisLevel = playerLevel * 5
+                local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+                local levelsToFirstSkillCheck = FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel
+                --print(" skill.name=", skill.name, " skill.rank=", skill.rank, " rankRequiredAtThisLevel=", rankRequiredAtThisLevel, " rankRequiredAtNextLevel=", rankRequiredAtNextLevel)
+                if levelsToFirstSkillCheck > 3 then
                     -- Don't check if more than 3 levels away from the first required level.
-                elseif FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel > 1 then
+                elseif levelsToFirstSkillCheck >= 2 then
+                    -- The first skill check level is 2 or more levels away, so the player doesn't necessarily need to correct any warnings at this level.
                     if skill.rank < FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK then
-                        warningCount = warningCount + 1
+                        -- The player has trained it, but the skill level is insufficient so far.
+                        -- This is a REMINDER, not a WARNING, so we don't increment warningCount.
                         if not hideWarnings then
                             printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
                         end
                     end
                 else
-                    if skill.rank < minimumRank and playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL then
+                    -- The player is either 1 level away from the first required level, or (more likely) they are past it.
+                    if skill.rank < rankRequiredAtThisLevel and playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL then
                         -- At this level the player must be at least the minimum rank.
                         warningCount = warningCount + 1
                         if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. minimumRank .. ".")
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. rankRequiredAtThisLevel .. ".")
                             printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                             flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                             playSound(ERROR_SOUND_FILE)
                         end
                         challengeIsOver = true
-                    elseif skill.rank < minimumRankAtNextLevel and playerLevel < MAX_LEVEL then
+                    elseif skill.rank < rankRequiredAtNextLevel and playerLevel < MAX_LEVEL then
                         -- Warn if dinging will invalidate the run.
                         warningCount = warningCount + 1
                         if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. minimumRankAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
                         end
                     end
                 end
@@ -598,7 +606,7 @@ end
 SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
 SlashCmdList["MOUNTAINEER"] = function(str)
 
-    local p1, p2, cmd, arg1
+    local p1, p2, p3, p4, cmd, arg1
     local override = true
 
     str = str:lower()
@@ -618,14 +626,16 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     end
 
     p1, p2 = str:find("^minimap +on$")
-    if p1 then
+    p3, p4 = str:find("^minimap +show$")
+    if p1 or p3 then
         setShowMiniMap(true)
         MinimapCluster:Show()
         return
     end
 
     p1, p2 = str:find("^minimap +off$")
-    if p1 then
+    p3, p4 = str:find("^minimap +hide$")
+    if p1 or p3 then
         setShowMiniMap(false)
         MinimapCluster:Hide()
         return
@@ -671,8 +681,8 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^check$")
     if p1 ~= nil then
         local level = UnitLevel('player');
-        local nWarnings = checkSkills(level)
-        gSkillsAreUpToDate = (nWarnings == 0)
+        local warningCount = checkSkills(level)
+        gSkillsAreUpToDate = (warningCount == 0)
         checkEquippedItems()
         return
     end
@@ -828,8 +838,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Do the following after a short delay.
             C_Timer.After(1, function()
 
-                local nWarnings = checkSkills(level)
-                gSkillsAreUpToDate = (nWarnings == 0)
+                local warningCount = checkSkills(level)
+                gSkillsAreUpToDate = (warningCount == 0)
                 checkEquippedItems()
 
             end)
@@ -877,8 +887,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         C_Timer.After(1, function()
 
             --print(" level=", level, " hp=", hp, " mana=", mana, " tp=", tp, " str=", str, " agi=", agi, " sta=", sta, " int=", int, " spi=", spi)
-            local nWarnings = checkSkills(level)
-            gSkillsAreUpToDate = (nWarnings == 0)
+            local warningCount = checkSkills(level)
+            gSkillsAreUpToDate = (warningCount == 0)
 
         end)
 
@@ -1034,8 +1044,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                     skill = skill:lower()
                     if skill == 'unarmed' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
                         if not gSkillsAreUpToDate then
-                            local nWarnings = checkSkills(level, true, true)
-                            if nWarnings == 0 then
+                            local warningCount = checkSkills(level, true, true)
+                            if warningCount == 0 then
                                 -- If we're here, the player just transitioned to all skills being up to date.
                                 gSkillsAreUpToDate = true
                                 -- Repeat the check so the all-is-well message is displayed.
