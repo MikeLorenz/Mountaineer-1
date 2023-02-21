@@ -545,6 +545,148 @@ local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
     return warningCount, challengeIsOver
 end
 
+-- Returns true if the item cannot be crafted in this version of WoW, and is therefore allowed to be looted or accepted as a quest reward.
+-- The word "pure" refers to the fact that the determination is based purely on the item itself, and local allows/disallows are not taken into consideration.
+local function pureItemIsUncraftable(itemId)
+
+    if itemId == nil or itemId == 0 then return false end
+
+    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
+    -- https://wowpedia.fandom.com/wiki/ItemType
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+
+    if classId == Enum.ItemClass.Weapon then
+        if subclassId == Enum.ItemWeaponSubclass.Wand
+        or subclassId == Enum.ItemWeaponSubclass.Staff
+        or subclassId == Enum.ItemWeaponSubclass.Polearm
+        then
+            return true
+        end
+    end
+
+    if classId == Enum.ItemClass.Armor then
+        if subclassId == Enum.ItemArmorSubclass.Shield
+        or subclassId == Enum.ItemArmorSubclass.Libram
+        or subclassId == Enum.ItemArmorSubclass.Idol
+        or subclassId == Enum.ItemArmorSubclass.Totem
+        or subclassId == Enum.ItemArmorSubclass.Sigil
+        or subclassId == Enum.ItemArmorSubclass.Relic
+        then
+            return true
+        end
+
+        if subclassId == Enum.ItemArmorSubclass.Generic then
+            if equipLoc == INVTYPE_FINGER
+            or equipLoc == INVTYPE_NECK
+            then
+                return (GAME_VERSION == 1)
+            end
+        end
+    end
+
+    if classId == Enum.ItemClass.Consumable then
+        if subclassId == Enum.ItemConsumableSubclass.Scroll then
+            return true
+        end
+    end
+
+    return false
+
+end
+
+-- Returns true if the item is a drink.
+-- The word "pure" refers to the fact that the determination is based purely on the item itself, and local allows/disallows are not taken into consideration.
+local function pureItemIsADrink(itemId)
+
+    if itemId == nil or itemId == 0 then return false end
+
+    -- These are all the drinks I could find on wowhead for WoW up to WotLK.
+    -- Unfortunately WoW categorizes food & drinks as the same thing, so I had to make this list.
+    local knownDrinkIds = {
+        [  '159'] = 1, -- Refreshing Spring Water
+        [ '1179'] = 1, -- Ice Cold Milk
+        [ '1205'] = 1, -- Melon Juice
+        [ '1645'] = 1, -- Moonberry Juice
+        [ '1708'] = 1, -- Sweet Nectar
+        [ '2593'] = 1, -- Flask of Stormwind Tawny
+        [ '2594'] = 1, -- Flagon of Dwarven Honeymead
+        [ '2595'] = 1, -- Jug of Badlands Bourbon
+        [ '2596'] = 1, -- Skin of Dwarven Stout
+        [ '2723'] = 1, -- Bottle of Dalaran Noir
+        [ '4600'] = 1, -- Cherry Grog
+        [ '8766'] = 1, -- Morning Glory Dew
+        ['17196'] = 1, -- Holiday Spirits
+        ['17402'] = 1, -- Greatfather's Winter Ale
+        ['17403'] = 1, -- Steamwheedle Fizzy Spirits
+        ['17404'] = 1, -- Blended Bean Brew
+        ['18287'] = 1, -- Evermurky
+        ['18288'] = 1, -- Molasses Firewater
+        ['19299'] = 1, -- Fizzy Faire Drink
+        ['19300'] = 1, -- Bottled Winterspring Water
+        ['27860'] = 1, -- Purified Draenic Water
+        ['28399'] = 1, -- Filtered Draenic Water
+        ['29401'] = 1, -- Sparkling Southshore Cider
+        ['29454'] = 1, -- Silverwine
+        ['32453'] = 1, -- Star's Tears
+        ['32455'] = 1, -- Star's Lament
+        ['32667'] = 1, -- Bash Ale
+        ['32668'] = 1, -- Dos Ogris
+        ['32722'] = 1, -- Enriched Terocone Juice
+        ['33042'] = 1, -- Black Coffee
+        ['33444'] = 1, -- Pungent Seal Whey
+        ['33445'] = 1, -- Honeymint Tea
+        ['35954'] = 1, -- Sweetened Goat's Milk
+        ['37253'] = 1, -- Frostberry Juice
+        ['38429'] = 1, -- Blackrock Spring Water
+        ['38430'] = 1, -- Blackrock Mineral Water
+        ['38431'] = 1, -- Blackrock Fortified Water
+        ['38432'] = 1, -- Plugger's Blackrock Ale
+        ['38698'] = 1, -- Bitter Plasma
+        ['40035'] = 1, -- Honey Mead
+        ['40036'] = 1, -- Snowplum Brandy
+        ['40042'] = 1, -- Caraway Burnwine
+        ['40357'] = 1, -- Grizzleberry Juice
+        ['41731'] = 1, -- Yeti Milk
+        ['42777'] = 1, -- Crusader's Waterskin
+        ['43086'] = 1, -- Fresh Apple Juice
+        ['43236'] = 1, -- Star's Sorrow
+        ['44570'] = 1, -- Glass of Eversong Wine
+        ['44571'] = 1, -- Bottle of Silvermoon Port
+        ['44573'] = 1, -- Cup of Frog Venom Brew
+        ['44574'] = 1, -- Skin of Mulgore Firewater
+        ['44575'] = 1, -- Flask of Bitter Cactus Cider
+        ['44616'] = 1, -- Glass of Dalaran White
+        ['44617'] = 1, -- Glass of Dalaran Red
+        ['44618'] = 1, -- Glass of Aged Dalaran Red
+        ['44941'] = 1, -- Fresh-Squeezed Limeade
+    }
+
+    return (knownDrinkIds[itemId] == 1)
+
+end
+
+-- Returns true if the item can be used for a profession, and is therefore allowed to be purchased, looted, or accepted as a quest reward.
+-- The word "pure" refers to the fact that the determination is based purely on the item itself, and local allows/disallows are not taken into consideration.
+local function pureItemCanBeUsedForAProfession(itemId)
+
+    if itemId == nil or itemId == 0 then return false end
+
+    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
+    -- https://wowpedia.fandom.com/wiki/ItemType
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+
+    if classId == Enum.ItemClass.Reagent
+    or classId == Enum.ItemClass.Tradegoods
+    or classId == Enum.ItemClass.ItemEnhancement
+    or classId == Enum.ItemClass.Recipe
+    then
+        return true
+    end
+
+    return false
+
+end
+
 -- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
 local function itemIsAllowed(itemId, evaluationFunction)
 
