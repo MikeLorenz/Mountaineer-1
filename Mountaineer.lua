@@ -1,13 +1,15 @@
 --[[
---------------------------------------------------------------------------------
-Created v1 12/2021 by ManchegoMike (MSL) - https://github.com/ManchegoMike
+================================================================================
+
+Created v1 12/2021 by ManchegoMike (MSL) -- https://www.twitch.tv/ManchegoMike
 Created v2 08/2022 by ManchegoMike (MSL)
 
 http://tinyurl.com/hc-mountaineers
---------------------------------------------------------------------------------
+
+================================================================================
 --]]
 
-local ADDON_VERSION = '2.0.3' -- This should be the same as in the 'Mountaineer.toc' file.
+local ADDON_VERSION = '2.0.5' -- This should be the same as in the 'Mountaineer.toc' file.
 
 -- These function as constants, but upon initialization they may be reset based on the current game version.
 local GAME_VERSION = 99 -- 1 = Classic Era or SoM, 2 = TBC, 3 = WotLK
@@ -232,9 +234,116 @@ local gDefaultGoodItems = {
     ['38518'] = true, -- cro's apple
 }
 
---------------------------------------------------------------------------------
--- Local functions
---------------------------------------------------------------------------------
+-- This list is shorter than before because I've done a better job of allowing items according to their categories.
+local gNewDefaultGoodItems = {
+    [ '2665'] = true, -- stormwind seasoning herbs
+    [ '2901'] = true, -- mining pick
+    [ '3342'] = true, -- captain sander's shirt
+    [ '3343'] = true, -- captain sander's booty bag
+    [ '3344'] = true, -- captain sander's sash
+    [ '4471'] = true, -- flint and tinder
+    [ '5060'] = true, -- thieves' tools
+    [ '5976'] = true, -- guild tabard
+    [ '6217'] = true, -- copper rod
+    [ '6256'] = true, -- fishing pole
+    [ '6365'] = true, -- strong fishing pole
+    [ '7005'] = true, -- skinning knife
+    ['17031'] = true, -- rune of teleportation
+    ['17032'] = true, -- rune of portals
+    ['17033'] = true, -- symbol of divinity
+    ['17034'] = true, -- maple seed
+    ['17035'] = true, -- stranglethorn seed
+    ['17036'] = true, -- ashwood seed
+    ['17037'] = true, -- hornbeam seed
+    ['17038'] = true, -- ironwood seed
+    ['21177'] = true, -- symbol of kings
+}
+
+--[[
+================================================================================
+
+Local functions
+
+================================================================================
+]]
+
+function tfmt(tbl, indent)
+
+    local function tableContainsTable(tbl)
+        for k, v in pairs(tbl) do
+            if (type(v) == "table") then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function tfmtSimple(tbl)
+        local s = '{'
+        local showedIndex = false
+        local expectedIndex = 1
+        for k, v in pairs(tbl) do
+            if expectedIndex > 1 then
+                s = s .. ', '
+            end
+            if type(k) == 'number' then
+                if showedIndex or k ~= expectedIndex then
+                    s = s .. '[' .. k .. ']='
+                    showedIndex = true
+                end
+            else
+                s = s .. k .. '='
+            end
+            if type(v) == 'number' then
+                s = s .. v
+            elseif (type(v) == 'string') then
+                s = s .. '"' .. v .. '"'
+            else
+                s = s .. '"' .. tostring(v) .. '"'
+            end
+            expectedIndex = expectedIndex + 1
+        end
+        s = s .. "}";
+        return s
+    end
+
+    local function tfmtRecursive(tbl, indent)
+        local s = string.rep(' ', indent) .. '{\r\n'
+        indent = indent + 4
+        local showedIndex = false
+        local expectedIndex = 1
+        for k, v in pairs(tbl) do
+            s = s .. string.rep(' ', indent)
+            if (type(k) == 'number') then
+                if showedIndex or k ~= expectedIndex then
+                    s = s .. '[' .. k .. '] = '
+                    showedIndex = true
+                end
+            else
+                s = s .. k .. ' = '
+            end
+            if (type(v) == 'number') then
+                s = s .. v .. ',\r\n'
+            elseif (type(v) == 'string') then
+                s = s .. '"' .. v .. '",\r\n'
+            elseif (type(v) == 'table') then
+                s = s .. tfmt(v, indent + 4) .. ',\r\n'
+            else
+                s = s .. '"' .. tostring(v) .. '",\r\n'
+            end
+            expectedIndex = expectedIndex + 1
+        end
+        s = s .. string.rep(' ', indent - 4) .. '}'
+        return s
+    end
+
+    if tableContainsTable(tbl) then
+        return tfmtRecursive(tbl, 0)
+    else
+        return tfmtSimple(tbl)
+    end
+
+end
 
 local function initSavedVarsIfNec(force)
     if force or AcctSaved == nil then
@@ -251,8 +360,8 @@ local function initSavedVarsIfNec(force)
     if force or CharSaved == nil then
         CharSaved = {
             xpFromLastGain = 0,
-            isLucky = true,             -- TODO 2023-02-21: Let the user specify hardtack or lucky.
-            isTrailblazer = false,      -- TODO 2023-02-21: Let the user specify trailblazer.
+            isLucky = true,
+            isTrailblazer = false,
         }
     end
 end
@@ -562,20 +671,22 @@ local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
     return warningCount, challengeIsOver
 end
 
---------------------------------------------------------------------------------
--- This group of 'itemIs' and 'unitIs' functions are used by our implementation
--- of the Table of Usable Items. None of these functions use the allowed or
--- disallowed item lists.
---------------------------------------------------------------------------------
+--[[
+================================================================================
+
+This group of 'itemIs...' and 'unitIs...' functions are used by the current
+implementation of the Table of Usable Items. None of these functions use the
+allowed or disallowed item lists.
+
+They use itemInfo = {itemId, GetItemInfo(itemId)} as set in itemCanBeUsed().
+
+================================================================================
+]]
 
 -- Returns true if the item cannot be crafted in this version of WoW, and is therefore allowed to be looted or accepted as a quest reward.
-local function itemIsUncraftable(itemId)
+local function itemIsUncraftable(itemInfo)
 
-    if itemId == nil or itemId == 0 then return false end
-
-    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
-    -- https://wowpedia.fandom.com/wiki/ItemType
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+    local itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = itemInfo
 
     if classId == Enum.ItemClass.Weapon then
         if subclassId == Enum.ItemWeaponSubclass.Wand
@@ -616,26 +727,22 @@ local function itemIsUncraftable(itemId)
 
 end
 
-local function itemIsFoodOrDrink(itemId)
+local function itemIsFoodOrDrink(itemInfo)
 
-    if itemId == nil or itemId == 0 then return false end
-
-    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
-    -- https://wowpedia.fandom.com/wiki/ItemType
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+    local itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = itemInfo
 
     return (classId == Enum.ItemClass.Consumable and subclassId == Enum.ItemConsumableSubclass.Fooddrink)
 
 end
 
 -- Returns true if the item is a drink.
-local function itemIsADrink(itemId)
+local function itemIsADrink(itemInfo)
 
-    if itemId == nil or itemId == 0 then return false end
+    local itemId = itemInfo
 
     -- These are all the drinks I could find on wowhead for WoW up to WotLK.
     -- Unfortunately WoW categorizes food & drinks as the same thing, so I had to make this list.
-    local knownDrinkIds = {
+    local drinkIds = {
         [  '159'] = 1, -- Refreshing Spring Water
         [ '1179'] = 1, -- Ice Cold Milk
         [ '1205'] = 1, -- Melon Juice
@@ -694,18 +801,18 @@ local function itemIsADrink(itemId)
         ['44941'] = 1, -- Fresh-Squeezed Limeade
     }
 
-    return (knownDrinkIds[itemId] == 1)
+    return (drinkIds[itemId] == 1)
 
 end
 
 -- Returns true if the item can be used for a profession, and is therefore allowed to be purchased, looted, or accepted as a quest reward.
-local function itemIsUsableForAProfession(itemId)
+local function itemIsUsableForAProfession(itemInfo)
 
-    if itemId == nil or itemId == 0 then return false end
+    local itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = itemInfo
 
-    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
-    -- https://wowpedia.fandom.com/wiki/ItemType
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+    if isCraftingReagent then
+        return true
+    end
 
     if classId == Enum.ItemClass.Reagent
     or classId == Enum.ItemClass.Tradegoods
@@ -719,27 +826,10 @@ local function itemIsUsableForAProfession(itemId)
 
 end
 
--- Returns true if the item's rarity is beyond green (e.g., blue, purple) and is therefore allowed to be looted.
-local function itemIsBetterThanGreen(itemId)
-
-    if itemId == nil or itemId == 0 then return false end
-
-    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
-    -- https://wowpedia.fandom.com/wiki/ItemType
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
-
-    return (rarity >= Enum.ItemQuality.Rare)
-
-end
-
 -- Returns true if the item is a special container (quiver, ammo pouch, soul shard bag) and is therefore allowed to be accepted as a quest reward.
-local function itemIsASpecialContainer(itemId)
+local function itemIsASpecialContainer(itemInfo)
 
-    if itemId == nil or itemId == 0 then return false end
-
-    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
-    -- https://wowpedia.fandom.com/wiki/ItemType
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+    local itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = itemInfo
 
     return (classId == Enum.ItemClass.Quiver)
         or (classId == Enum.ItemClass.Container and subclassId > 0) -- Container subclass of 0 means it's a standard bag. Anything else is special.
@@ -747,9 +837,9 @@ local function itemIsASpecialContainer(itemId)
 end
 
 -- Returns true if the item is a reward from a class-specific quest and is therefore allowed to be accepted as a quest reward.
-local function itemIsFromClassQuest(itemId)
+local function itemIsFromClassQuest(itemInfo)
 
-    if itemId == nil or itemId == 0 then return false end
+    local itemId = itemInfo
 
     -- I scoured wowhead for class quest reward items, and this is the list I came up with.
     -- I don't see anything in the WoW API where a quest is labelled as a class quest.
@@ -780,43 +870,20 @@ local function itemIsFromClassQuest(itemId)
 
 end
 
--- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
-local function itemIsAllowed(itemId, evaluationFunction)
+-- Returns true if the item's rarity is beyond green (e.g., blue, purple) and is therefore allowed to be looted.
+local function itemIsRare(itemInfo)
 
-    if itemId == nil or itemId == 0 then return true end
-    --print("itemIsAllowed("..itemId..")")
+    local itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = itemInfo
 
-    itemId = tostring(itemId)
-    initSavedVarsIfNec()
+    return (rarity >= Enum.ItemQuality.Rare)
 
-    -- Anything on the good list overrides anything on the bad list because the good list is only set by the player.
-    if AcctSaved.goodItems[itemId] then
-        --print("On the nice list")
-        return true
-    end
-
-    -- If it's on the bad list, it's bad.
-    if AcctSaved.badItems[itemId] then
-        --print("On the naughty list")
-        return false
-    end
-
-    if evaluationFunction then
-        -- If there's an additional evaluation function, use that.
-        local ret = evaluationFunction(itemId)
-        --print("Evaluation function returned ", ret)
-        return ret
-    else
-        -- If no additional evaluation is required, then assume it's allowed.
-        --print("Fell through to return true")
-        return true
-    end
 end
 
 -- Returns true if the unit is labelled as rare or rare elite, meaning that it can be looted.
 local function unitIsRare(unitId)
 
-    if unitId == nil or unitId == 0 then return false end
+    unitId = unitId .. "";
+    if unitId == '' or unitId == '0' then return false end
 
     local c = UnitClassification(unitId)
     return (c == "rare" or c == "rareelite" or c == "worldboss")
@@ -826,7 +893,8 @@ end
 -- Returns true if the unit is a vendor approved by the Trailblazer challenge.
 local function unitIsOpenWorldVendor(unitId)
 
-    if unitId == nil or unitId == 0 then return false end
+    unitId = unitId .. "";
+    if unitId == '' or unitId == '0' then return false end
 
     -- https://www.warcrafttavern.com/wow-classic/guides/hidden-special-vendor/
     -- The link above was missing some vendors that I added below. I'm sure there are others.
@@ -872,22 +940,49 @@ local function unitIsOpenWorldVendor(unitId)
 
 end
 
---------------------------------------------------------------------------------
--- BEGIN Table of Usable Items
---------------------------------------------------------------------------------
+--[[
+================================================================================
+
+BEGIN Table of Usable Items (see the Mountaineer document)
+
+This function can be called in one of two modes:
+    No unitId arguments:
+        This is typically from a player request about an item where we don't
+        know how they got the item. The best we can do it see if it meets any
+        of the special item criteria and advise them accordingly.
+    Exactly one non-nil unitId argument:
+        Given the origin of the item, the function can make a decision about
+        whether the item is usable.
+
+The function returns two values:
+    Number:
+        0=no, 1=yes, 2=it depends on the context.
+        If exactly one unitId argument is passed, the value will be 0 or 1.
+        If none are passed, the value will probably be 2.
+    String:
+        If exactly one unitId argument is passed, the text should fit with
+        this: Item allowed (...) or Item not allowed (...)
+        If no unitId arguments are passed, the text is longer, providing a
+        more complete explanation, as you might find in the document.
+
+================================================================================
+--]]
 
 local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewardedByUnitId)
 
-    -- This function returns two values: a boolean and some explanatory text.
-    -- The text should fit with this: Item allowed (...) or Item disallowed (...)
-
-    if itemId == nil or itemId == 0 then
+    itemId = itemId .. ''
+    if itemId == '' or itemId == '0' then
         return false, "no item id"
     end
 
     -- If the item is already on the allowed list, we don't need to use any logic.
+    if gDefaultGoodItems[itemId] then
+        return true, "on the pre-approved list"
+    end
+
+    -- If the item is already on the allowed list, we don't need to use any logic.
     if AcctSaved.goodItems[itemId] then
-        return true, "on the approved list"
+        return true, "on your approved list"
     end
 
     -- Convenience booleans that make the code below a little easier to read.
@@ -896,85 +991,172 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
     local isRewarded  = (rewardedByUnitId    ~= nil)
 
     -- Make sure there is ONE AND ONLY ONE source.
-    local sourceCount = 0;
+    local                 sourceCount = 0;
     if isLooted     then  sourceCount = sourceCount + 1  end
     if isPurchased  then  sourceCount = sourceCount + 1  end
     if isRewarded   then  sourceCount = sourceCount + 1  end
-    if sourceCount ~= 1 then
+    if sourceCount > 1 then
         return false, sourceCount .. " item sources were specified"
     end
 
-    if itemIsUsableForAProfession(itemId) then
-        return true, "used by a profession"
-    end
+    -- Place detailed item information into an array of results so that each individual function we
+    -- call doesn't have to call GetItemInfo, which gets its data from the server. Presumably the
+    -- game is smart enough to cache it, but who knows.
+    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
+    local itemInfo = {itemId, GetItemInfo(itemId)}
 
-    if itemIsADrink(itemId) then
-        return true, "drink"
-    end
+    if sourceCount == 0 then
 
-    if isPurchased then
+        -- We don't know where the item came from.
 
-        if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
-            return true, "open-world vendor"
+        if itemIsUsableForAProfession(itemInfo) then
+            return 1, "Items usable by a profession can be purchased, looted, or accepted as quest rewards"
         end
 
-        return false, "vendor"
-
-    end
-
-    -- TODO: Need to figure out if the item came from a chest or fishing.
-
-    if isLooted or isRewarded then
-
-        if itemIsFoodOrDrink(itemId) then
-            return true, "food/drink"
+        if itemIsADrink(itemInfo) then
+            return 1, "Drinks can be purchased, looted, or accepted as quest rewards"
         end
 
-        if itemIsUncraftable(itemId) then
-            return true, "uncraftable item"
+        if itemIsFoodOrDrink(itemInfo) then
+            return 2, "Food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed"
         end
 
-    end
+        if itemIsUncraftable(itemInfo) then
+            return 2, "Uncraftable items can be looted or accepted as quest rewards, but cannot be purchased"
+        end
 
-    if isLooted then
+        if itemIsRare(itemInfo) then
+            return 2, "Rare items can be looted, but cannot be purchased or accepted as quest rewards"
+        end
+
+        if itemIsASpecialContainer(itemInfo) then
+            return 2, "Special containers can be accepted as quest rewards, but cannot be purchased or looted"
+        end
+
+        if itemIsFromClassQuest(itemInfo) then
+            return 2, "Class quest rewards can be accepted"
+        end
 
         if CharSaved.isLucky then
-            return true, "looted"
+            return 2, "Lucky mountaineers can use this item if it was looted, but not if it was purchased or accepted as a quest reward"
+        else
+            return 2, "Hardtack mountaineers can only use this item if it is self-made"
         end
 
-        if itemIsBetterThanGreen(itemId) then
-            return true, "rare item"
+    else
+
+        -- We know where the item came from.
+
+        if itemIsUsableForAProfession(itemInfo) then
+            return 1, "Used by a profession"
         end
 
-        if unitIsRare(lootedFromUnitId) then
-            return true, "looted from rare mob"
+        if itemIsADrink(itemInfo) then
+            return 1, "Drink"
         end
 
-        return false, "looted"
+        if isPurchased then
+
+            if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
+                return 1, "Trailblazer approved vendor"
+            end
+
+            return 0, "Vendor"
+
+        end
+
+        -- TODO: Need to figure out if the item came from a chest or fishing.
+
+        if isLooted or isRewarded then
+
+            if itemIsFoodOrDrink(itemInfo) then
+                return 1, "Food"
+            end
+
+            if itemIsUncraftable(itemInfo) then
+                return 1, "Uncraftable item"
+            end
+
+        end
+
+        if isLooted then
+
+            if CharSaved.isLucky then
+                return 1, "Looted"
+            end
+
+            if itemIsRare(itemInfo) then
+                return 1, "Rare item"
+            end
+
+            if unitIsRare(lootedFromUnitId) then
+                return 1, "Looted from rare mob"
+            end
+
+            return 0, "Looted"
+
+        end
+
+        if isRewarded then
+
+            if itemIsASpecialContainer(itemInfo) then
+                return 1, "Special container"
+            end
+
+            if itemIsFromClassQuest(itemInfo) then
+                return 1, "Class quest reward"
+            end
+
+            return 0, "Quest reward"
+
+        end
+
+        return 0, "Failed all tests"
 
     end
-
-    if isRewarded then
-
-        if itemIsASpecialContainer(itemId) then
-            return true, "special container"
-        end
-
-        if itemIsFromClassQuest(itemId) then
-            return true, "class quest reward"
-        end
-
-        return false, "quest reward"
-
-    end
-
-    return false, "failed all tests"
 
 end
 
---------------------------------------------------------------------------------
--- END Table of Usable Items
---------------------------------------------------------------------------------
+--[[
+================================================================================
+
+END Table of Usable Items (see the Mountaineer document)
+
+================================================================================
+]]
+
+-- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
+local function itemIsAllowed(itemId, evaluationFunction)
+
+    if itemId == nil or itemId == 0 then return true end
+    --print("itemIsAllowed("..itemId..")")
+
+    itemId = tostring(itemId)
+    initSavedVarsIfNec()
+
+    -- Anything on the good list overrides anything on the bad list because the good list is only set by the player.
+    if AcctSaved.goodItems[itemId] then
+        --print("On the nice list")
+        return true
+    end
+
+    -- If it's on the bad list, it's bad.
+    if AcctSaved.badItems[itemId] then
+        --print("On the naughty list")
+        return false
+    end
+
+    if evaluationFunction then
+        -- If there's an additional evaluation function, use that.
+        local ret = evaluationFunction(itemId)
+        --print("Evaluation function returned ", ret)
+        return ret
+    else
+        -- If no additional evaluation is required, then assume it's allowed.
+        --print("Fell through to return true")
+        return true
+    end
+end
 
 local function checkEquippedItems()
     local warningCount = 0
@@ -997,9 +1179,13 @@ local function checkEquippedItems()
     return warningCount
 end
 
---------------------------------------------------------------------------------
--- Parsing command line
---------------------------------------------------------------------------------
+--[[
+================================================================================
+
+Parsing command line
+
+================================================================================
+]]
 
 SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
 SlashCmdList["MOUNTAINEER"] = function(str)
@@ -1121,9 +1307,13 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
 end
 
---------------------------------------------------------------------------------
--- Event processing
---------------------------------------------------------------------------------
+--[[
+================================================================================
+
+Event processing
+
+================================================================================
+]]
 
 local EventFrame = CreateFrame('frame', 'EventFrame')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
