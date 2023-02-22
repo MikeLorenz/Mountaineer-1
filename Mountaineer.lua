@@ -251,6 +251,8 @@ local function initSavedVarsIfNec(force)
     if force or CharSaved == nil then
         CharSaved = {
             xpFromLastGain = 0,
+            isLucky = true,             -- TODO 2023-02-21: Let the user specify hardtack or lucky.
+            isTrailblazer = false,      -- TODO 2023-02-21: Let the user specify trailblazer.
         }
     end
 end
@@ -316,7 +318,22 @@ local function playSound(path)
     end
 end
 
--- Allows or disallows an items. Returns true if the item was found and modified. Returns false if there was an error.
+local function dumpQuests()
+    local i = 1
+    local isClassQuest = false
+    while GetQuestLogTitle(i) do
+        local title, level, suggestedGroup, isHeader, isCollapsed, isComplete, frequency, questID, startEvent, displayQuestID, isOnMap, hasLocalPOI, isTask, isStory = GetQuestLogTitle(i);
+        if isHeader then
+            printGood(title)
+            isClassQuest = (title == PLAYER_CLASS_NAME)
+        else
+            printInfo("[" .. level .. "] " .. questID .. ": " .. title .. (isTask and " (task)" or " -") .. (isStory and " (story)" or " -") .. (isComplete and " (done)" or " -") .. (isClassQuest and " (class)" or " -"))
+        end
+        i = i + 1
+    end
+end
+
+-- Allows or disallows an item (or forgets an item if allow == nil). Returns true if the item was found and modified. Returns false if there was an error.
 local function allowOrDisallowItem(itemStr, allow, userOverride)
     local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
     if not name then
@@ -545,9 +562,14 @@ local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
     return warningCount, challengeIsOver
 end
 
+--------------------------------------------------------------------------------
+-- This group of 'itemIs' and 'unitIs' functions are used by our implementation
+-- of the Table of Usable Items. None of these functions use the allowed or
+-- disallowed item lists.
+--------------------------------------------------------------------------------
+
 -- Returns true if the item cannot be crafted in this version of WoW, and is therefore allowed to be looted or accepted as a quest reward.
--- The word "pure" refers to the fact that the determination is based purely on the item itself, and local allows/disallows are not taken into consideration.
-local function pureItemIsUncraftable(itemId)
+local function itemIsUncraftable(itemId)
 
     if itemId == nil or itemId == 0 then return false end
 
@@ -586,7 +608,7 @@ local function pureItemIsUncraftable(itemId)
 
     if classId == Enum.ItemClass.Consumable then
         if subclassId == Enum.ItemConsumableSubclass.Scroll then
-            return true
+            return (GAME_VERSION < 3)
         end
     end
 
@@ -594,9 +616,20 @@ local function pureItemIsUncraftable(itemId)
 
 end
 
+local function itemIsFoodOrDrink(itemId)
+
+    if itemId == nil or itemId == 0 then return false end
+
+    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
+    -- https://wowpedia.fandom.com/wiki/ItemType
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+
+    return (classId == Enum.ItemClass.Consumable and subclassId == Enum.ItemConsumableSubclass.Fooddrink)
+
+end
+
 -- Returns true if the item is a drink.
--- The word "pure" refers to the fact that the determination is based purely on the item itself, and local allows/disallows are not taken into consideration.
-local function pureItemIsADrink(itemId)
+local function itemIsADrink(itemId)
 
     if itemId == nil or itemId == 0 then return false end
 
@@ -666,8 +699,7 @@ local function pureItemIsADrink(itemId)
 end
 
 -- Returns true if the item can be used for a profession, and is therefore allowed to be purchased, looted, or accepted as a quest reward.
--- The word "pure" refers to the fact that the determination is based purely on the item itself, and local allows/disallows are not taken into consideration.
-local function pureItemCanBeUsedForAProfession(itemId)
+local function itemIsUsableForAProfession(itemId)
 
     if itemId == nil or itemId == 0 then return false end
 
@@ -684,6 +716,67 @@ local function pureItemCanBeUsedForAProfession(itemId)
     end
 
     return false
+
+end
+
+-- Returns true if the item's rarity is beyond green (e.g., blue, purple) and is therefore allowed to be looted.
+local function itemIsBetterThanGreen(itemId)
+
+    if itemId == nil or itemId == 0 then return false end
+
+    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
+    -- https://wowpedia.fandom.com/wiki/ItemType
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+
+    return (rarity >= Enum.ItemQuality.Rare)
+
+end
+
+-- Returns true if the item is a special container (quiver, ammo pouch, soul shard bag) and is therefore allowed to be accepted as a quest reward.
+local function itemIsASpecialContainer(itemId)
+
+    if itemId == nil or itemId == 0 then return false end
+
+    -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
+    -- https://wowpedia.fandom.com/wiki/ItemType
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+
+    return (classId == Enum.ItemClass.Quiver)
+        or (classId == Enum.ItemClass.Container and subclassId > 0) -- Container subclass of 0 means it's a standard bag. Anything else is special.
+
+end
+
+-- Returns true if the item is a reward from a class-specific quest and is therefore allowed to be accepted as a quest reward.
+local function itemIsFromClassQuest(itemId)
+
+    if itemId == nil or itemId == 0 then return false end
+
+    -- I scoured wowhead for class quest reward items, and this is the list I came up with.
+    -- I don't see anything in the WoW API where a quest is labelled as a class quest.
+    -- The closest is the quest log headers, but collapsed quest headers present a problem.
+    -- Sometime in the future maybe I can revisit this. (2023-02-21)
+    local classQuestItems = {
+        -- Druid
+        ["32387"]=1, ["15883"]=1, ["15882"]=1, ["22274"]=1, ["22272"]=1, ["22458"]=1, ["32481"]=1, ["15877"]=1, ["32449"]=1, ["16608"]=1, ["13446"]=1, ["15866"]=1,
+        -- Hunter
+        ["20083"]=1, ["19991"]=1, ["19992"]=1, ["18714"]=1, ["18724"]=1, ["24136"]=1, ["18707"]=1, ["24138"]=1,
+        -- Mage
+        ["37006"]=1, ["7514"]=1, ["11263"]=1, ["7513"]=1, ["20035"]=1, ["20037"]=1, ["20036"]=1, ["7515"]=1, ["9517"]=1, ["7508"]=1, ["9513"]=1, ["7507"]=1, ["9514"]=1, ["7509"]=1, ["7510"]=1, ["7512"]=1, ["9515"]=1, ["7511"]=1, ["9516"]=1,
+        -- Paladin
+        ["25549"]=1, ["25464"]=1, ["6953"]=1, ["30696"]=1, ["20620"]=1, ["20504"]=1, ["20512"]=1, ["20505"]=1, ["7083"]=1, ["6993"]=1, ["9607"]=1, ["6776"]=1, ["6866"]=1, ["18775"]=1, ["6916"]=1, ["18746"]=1, ["6775"]=1,
+        -- Priest
+        ["19990"]=1, ["20082"]=1, ["20006"]=1, ["18659"]=1, ["23924"]=1, ["16605"]=1, ["23931"]=1, ["16604"]=1, ["16607"]=1, ["16606"]=1,
+        -- Rogue
+        ["18160"]=1, ["25878"]=1, ["7676"]=1, ["30504"]=1, ["30505"]=1, ["8066"]=1, ["19984"]=1, ["20255"]=1, ["19982"]=1, ["7907"]=1, ["8432"]=1, ["8095"]=1, ["7298"]=1, ["7208"]=1, ["23921"]=1, ["23919"]=1,
+        -- Shaman
+        ["20369"]=1, ["20503"]=1, ["20556"]=1, ["6636"]=1, ["6637"]=1, ["5175"]=1, ["5178"]=1, ["6654"]=1, ["5177"]=1, ["5176"]=1, ["20134"]=1, ["18807"]=1, ["18746"]=1, ["6635"]=1,
+        -- Warlock
+        ["18762"]=1, ["22244"]=1, ["20536"]=1, ["20534"]=1, ["20530"]=1, ["6900"]=1, ["22243"]=1, ["6898"]=1, ["15109"]=1, ["12642"]=1, ["15108"]=1, ["15106"]=1, ["18602"]=1, ["15107"]=1, ["15105"]=1, ["12293"]=1, ["4925"]=1, ["5778"]=1,
+        -- Warrior
+        ["20521"]=1, ["20130"]=1, ["20517"]=1, ["6851"]=1, ["6975"]=1, ["6977"]=1, ["6976"]=1, ["6783"]=1, ["6979"]=1, ["6983"]=1, ["6980"]=1, ["6985"]=1, ["7326"]=1, ["7328"]=1, ["7327"]=1, ["7329"]=1, ["7115"]=1, ["7117"]=1, ["7116"]=1, ["7118"]=1, ["7133"]=1, ["6978"]=1, ["6982"]=1, ["6981"]=1, ["6984"]=1, ["6970"]=1, ["6974"]=1, ["7120"]=1, ["7130"]=1, ["23429"]=1, ["23423"]=1, ["23431"]=1, ["23430"]=1, ["6973"]=1, ["6971"]=1, ["6966"]=1, ["6968"]=1, ["6969"]=1, ["6967"]=1, ["7129"]=1, ["7132"]=1,
+    }
+
+    return (classQuestItems[itemId] == 1)
 
 end
 
@@ -719,6 +812,169 @@ local function itemIsAllowed(itemId, evaluationFunction)
         return true
     end
 end
+
+-- Returns true if the unit is labelled as rare or rare elite, meaning that it can be looted.
+local function unitIsRare(unitId)
+
+    if unitId == nil or unitId == 0 then return false end
+
+    local c = UnitClassification(unitId)
+    return (c == "rare" or c == "rareelite" or c == "worldboss")
+
+end
+
+-- Returns true if the unit is a vendor approved by the Trailblazer challenge.
+local function unitIsOpenWorldVendor(unitId)
+
+    if unitId == nil or unitId == 0 then return false end
+
+    -- https://www.warcrafttavern.com/wow-classic/guides/hidden-special-vendor/
+    -- The link above was missing some vendors that I added below. I'm sure there are others.
+    local vendorIds = {
+        [  '844'] = 1, -- Antonio Perelli
+        [  '954'] = 1, -- Kat Sampson
+        [ '1146'] = 1, -- Vharr
+        [ '1669'] = 1, -- Defias Profiteer
+        [ '1685'] = 1, -- Xandar Goodbeard
+        [ '2481'] = 1, -- Bliztik
+        [ '2672'] = 1, -- Cowardly Crosby
+        [ '2679'] = 1, -- Wenna Silkbeard
+        [ '2697'] = 1, -- Clyde Ranthal
+        [ '2698'] = 1, -- George Candarte
+        [ '2805'] = 1, -- Deneb Walker
+        [ '2843'] = 1, -- Jutak
+        [ '3134'] = 1, -- Kzixx
+        [ '3534'] = 1, -- Wallace the Blind
+        [ '3535'] = 1, -- Blackmoss the Fetid
+        [ '3536'] = 1, -- Kris Legace
+        [ '3537'] = 1, -- Zixil
+        [ '3552'] = 1, -- Alexandre Lefevre
+        [ '3682'] = 1, -- Vrang Wildgore
+        [ '3683'] = 1, -- Kiknikle
+        [ '3684'] = 1, -- Pizznukle
+        [ '3956'] = 1, -- Harklan Moongrove
+        [ '4085'] = 1, -- Nizzik
+        [ '4086'] = 1, -- Veenix
+        [ '8305'] = 1, -- Kixxle
+        [ '8678'] = 1, -- Jubie Gadgetspring
+        [ '9179'] = 1, -- Jazzrik
+        ['11557'] = 1, -- Meilosh
+        ['11874'] = 1, -- Masat T'andr
+        ['12245'] = 1, -- Vendor-Tron 1000
+        ['12246'] = 1, -- Super-Seller 680
+        ['12384'] = 1, -- Augustus the Touched
+        ['14371'] = 1, -- Shen'dralar Provisioner
+        ['15293'] = 1, -- Aendel Windspear
+        ['16015'] = 1, -- Vi'el
+    }
+
+    return (vendorIds[unitId] == 1)
+
+end
+
+--------------------------------------------------------------------------------
+-- BEGIN Table of Usable Items
+--------------------------------------------------------------------------------
+
+local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewardedByUnitId)
+
+    -- This function returns two values: a boolean and some explanatory text.
+    -- The text should fit with this: Item allowed (...) or Item disallowed (...)
+
+    if itemId == nil or itemId == 0 then
+        return false, "no item id"
+    end
+
+    -- If the item is already on the allowed list, we don't need to use any logic.
+    if AcctSaved.goodItems[itemId] then
+        return true, "on the approved list"
+    end
+
+    -- Convenience booleans that make the code below a little easier to read.
+    local isLooted    = (lootedFromUnitId    ~= nil)
+    local isPurchased = (purchasedFromUnitId ~= nil)
+    local isRewarded  = (rewardedByUnitId    ~= nil)
+
+    -- Make sure there is ONE AND ONLY ONE source.
+    local sourceCount = 0;
+    if isLooted     then  sourceCount = sourceCount + 1  end
+    if isPurchased  then  sourceCount = sourceCount + 1  end
+    if isRewarded   then  sourceCount = sourceCount + 1  end
+    if sourceCount ~= 1 then
+        return false, sourceCount .. " item sources were specified"
+    end
+
+    if itemIsUsableForAProfession(itemId) then
+        return true, "used by a profession"
+    end
+
+    if itemIsADrink(itemId) then
+        return true, "drink"
+    end
+
+    if isPurchased then
+
+        if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
+            return true, "open-world vendor"
+        end
+
+        return false, "vendor"
+
+    end
+
+    -- TODO: Need to figure out if the item came from a chest or fishing.
+
+    if isLooted or isRewarded then
+
+        if itemIsFoodOrDrink(itemId) then
+            return true, "food/drink"
+        end
+
+        if itemIsUncraftable(itemId) then
+            return true, "uncraftable item"
+        end
+
+    end
+
+    if isLooted then
+
+        if CharSaved.isLucky then
+            return true, "looted"
+        end
+
+        if itemIsBetterThanGreen(itemId) then
+            return true, "rare item"
+        end
+
+        if unitIsRare(lootedFromUnitId) then
+            return true, "looted from rare mob"
+        end
+
+        return false, "looted"
+
+    end
+
+    if isRewarded then
+
+        if itemIsASpecialContainer(itemId) then
+            return true, "special container"
+        end
+
+        if itemIsFromClassQuest(itemId) then
+            return true, "class quest reward"
+        end
+
+        return false, "quest reward"
+
+    end
+
+    return false, "failed all tests"
+
+end
+
+--------------------------------------------------------------------------------
+-- END Table of Usable Items
+--------------------------------------------------------------------------------
 
 local function checkEquippedItems()
     local warningCount = 0
@@ -832,6 +1088,12 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^version$")
     if p1 ~= nil then
         printGood(ADDON_VERSION)
+        return
+    end
+
+    p1, p2 = str:find("^dq$")
+    if p1 ~= nil then
+        dumpQuests()
         return
     end
 
