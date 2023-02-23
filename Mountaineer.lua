@@ -11,11 +11,6 @@ http://tinyurl.com/hc-mountaineers
 
 local ADDON_VERSION = '2.0.5' -- This should be the same as in the 'Mountaineer.toc' file.
 
--- These function as constants, but upon initialization they may be reset based on the current game version.
-local GAME_VERSION = 99 -- 1 = Classic Era or SoM, 2 = TBC, 3 = WotLK
-local MAX_LEVEL = 60
-local MAX_SKILL = MAX_LEVEL * 5
-
 -- The first player level where the run could end if their first aid, fishing,
 -- cooking skills aren't up to the minimum requirement.
 local FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL = 10
@@ -268,7 +263,7 @@ local gNewDefaultGoodItems = {
 --[[
 ================================================================================
 
-Local functions
+Lua utility functions that are independent of WoW
 
 ================================================================================
 ]]
@@ -356,6 +351,89 @@ function tfmt(tbl, indent)
 
 end
 
+--[[
+================================================================================
+
+WoW utility functions & vars that could be used by any WoW addon
+
+================================================================================
+]]
+
+local PRINT_PREFIX = "MOUNTAINEER: "
+local GAME_VERSION = nil -- 1 = Classic Era or SoM, 2 = TBC, 3 = WotLK
+
+local function gameVersion()
+    if GAME_VERSION ~= nil then return GAME_VERSION end
+    local version, build, date, tocversion = GetBuildInfo()
+    if version:sub(1, 2) == '1.' then
+        return 1
+    elseif version:sub(1, 2) == '2.' then
+        return 2
+    elseif version:sub(1, 2) == '3.' then
+        return 3
+    else
+        return 0
+    end
+end
+
+local function maxLevel()
+    local ver = gameVersion()
+    if ver == 1 then return 60 end
+    if ver == 2 then return 70 end
+    if ver == 3 then return 80 end
+    return 60
+end
+
+local function colorText(hex6, text)
+    return "|cFF" .. hex6 .. text .. "|r"
+end
+
+local function printInfo(text)
+    print(colorText('c0c0c0', PRINT_PREFIX) .. colorText('ffffff', text))
+end
+
+local function printWarning(text)
+    print(colorText('ff0000', PRINT_PREFIX) .. colorText('ff8000', text))
+end
+
+local function printGood(text)
+    print(colorText('0080FF', PRINT_PREFIX) .. colorText('00ff00', text))
+end
+
+local function flashWarning(text)
+    UIErrorsFrame:AddMessage(text, 1.0, 0.5, 0.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+local function flashInfo(text)
+    UIErrorsFrame:AddMessage(text, 1.0, 1.0, 1.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+local function flashGood(text)
+    UIErrorsFrame:AddMessage(text, 0.0, 1.0, 0.0, GetChatTypeIndex('SYSTEM'), 8);
+end
+
+local function getContainerNumSlots(bag)
+    return gameVersion() < 3 and GetContainerNumSlots(bag) or C_Container.GetContainerNumSlots(bag)
+end
+
+local function getContainerItemInfo(bag, slot)
+    return gameVersion() < 3 and GetContainerItemInfo(bag, slot) or C_Container.GetContainerItemInfo(bag, slot)
+end
+
+local function parseItemLink(link)
+    -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
+    local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
+    return id, text
+end
+
+--[[
+================================================================================
+
+Local functions for this addon
+
+================================================================================
+]]
+
 local function initSavedVarsIfNec(force)
     if force or AcctSaved == nil then
         AcctSaved = {
@@ -378,10 +456,11 @@ local function initSavedVarsIfNec(force)
     end
 end
 
-local function parseItemLink(link)
-    -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
-    local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
-    return id, text
+local function playSound(path)
+    initSavedVarsIfNec()
+    if not AcctSaved.quiet then
+        PlaySoundFile(path, "Master")
+    end
 end
 
 local function setQuiet(tf)
@@ -402,41 +481,6 @@ end
 local function setXPFromLastGain(xp)
     initSavedVarsIfNec()
     CharSaved.xpFromLastGain = xp
-end
-
-local function colorText(hex6, text)
-    return "|cFF" .. hex6 .. text .. "|r"
-end
-
-local function flashWarning(text)
-    UIErrorsFrame:AddMessage(text, 1.0, 0.5, 0.0, GetChatTypeIndex('SYSTEM'), 8);
-end
-
-local function flashInfo(text)
-    UIErrorsFrame:AddMessage(text, 1.0, 1.0, 1.0, GetChatTypeIndex('SYSTEM'), 8);
-end
-
-local function flashGood(text)
-    UIErrorsFrame:AddMessage(text, 0.0, 1.0, 0.0, GetChatTypeIndex('SYSTEM'), 8);
-end
-
-local function printInfo(text)
-    print(colorText('c0c0c0', "MOUNTAINEER: ") .. colorText('ffffff', text))
-end
-
-local function printWarning(text)
-    print(colorText('ff0000', "MOUNTAINEER: ") .. colorText('ff8000', text))
-end
-
-local function printGood(text)
-    print(colorText('0080FF', "MOUNTAINEER: ") .. colorText('00ff00', text))
-end
-
-local function playSound(path)
-    initSavedVarsIfNec()
-    if not AcctSaved.quiet then
-        PlaySoundFile(path, "Master")
-    end
 end
 
 local function dumpSpell(spellId)
@@ -466,10 +510,10 @@ end
 
 local function dumpBags()
     for bag = 0, NUM_BAG_SLOTS do
-        if GetContainerNumSlots(bag) > 0 then
+        if getContainerNumSlots(bag) > 0 then
             print("=== Bag " .. bag .. " ===")
-            for slot = 1, GetContainerNumSlots(bag) do
-                local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = GetContainerItemInfo(bag, slot)
+            for slot = 1, getContainerNumSlots(bag) do
+                local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = getContainerItemInfo(bag, slot)
                 if texture then
                     print(tostring(hyperlink)
                         .. '  id='      .. tostring(itemId)
@@ -495,6 +539,70 @@ local function whatAmI()
         .. (CharSaved.isLazyBastard and " lazy bastard" or "")
         .. (CharSaved.isTrailblazer and " trailblazing" or "")
         .. " mountaineer"
+end
+
+local function whichSpellsCanIUse(class)
+    -- The string are used in this sentence: "You can only train and use ____"
+    if class == CLASS_WARRIOR then
+        if gameVersion() < 3 then
+            return "Battle Shout, Battle Stance, Charge, Thunder Clap"
+        else
+            return "Battle Shout, Battle Stance, Charge, Thunder Clap, Victory Rush"
+        end
+    elseif class == CLASS_PALADIN then
+        return "Blessing of Might, Devotion Aura, Divine Protection, Hammer of Justice, Holy Light, Purify, Seals"
+    elseif class == CLASS_HUNTER then
+        return "Aspect of the Monkey, Hunter's Mark, Tracking"
+    elseif class == CLASS_ROGUE then
+        return "Evasion, Pick Pocket, Stealth"
+    elseif class == CLASS_PRIEST then
+        return "Fade, Lesser Heal, Power Word Fortitude, Power Word Shield, Renew, Smite (Rank 1)"
+    elseif class == CLASS_SHAMAN then
+        return "All earth totems, Healing Wave, Lightning Bolt (Rank 1), Lightning Shield, Rockbiter Weapon"
+    elseif class == CLASS_MAGE then
+        return "Arcane Intellect, Conjure Food & Water, Fireball (Rank 1), Frost Armor, Polymorph"
+    elseif class == CLASS_WARLOCK then
+        return "Curse of Weakness, Demon Skin, Fear, Life Tap, Shadow Bolt (Rank 1)"
+    elseif class == CLASS_DRUID then
+        return "Healing Touch, Mark of the Wild, Rejuvenation, Thorns, Wrath (Rank 1)"
+    else
+        return "defensive abilities, or those that only cause damage at melee range, or do not require a melee weapon to be equipped"
+    end
+end
+
+local function whichSpellsCanINotUse(class)
+    -- The string are used in this sentence: "You cannot use ____"
+    if class == CLASS_WARRIOR then
+        return "Heroic Strike, Rend, Hamstring"
+    elseif class == CLASS_PALADIN then
+        return "Judgement"
+    elseif class == CLASS_HUNTER then
+        return "Arcane Shot, Concussive Shot, Serpent Sting"
+    elseif class == CLASS_ROGUE then
+        return "Backstab, Eviscerate, Gouge, Sinister Strike"
+    elseif class == CLASS_PRIEST then
+        return "Shadow Word Pain, Smite (Rank 2)"
+    elseif class == CLASS_SHAMAN then
+        return "Earth Shock, Lightning Bolt (Rank 2)"
+    elseif class == CLASS_MAGE then
+        return "Arcane Missiles, Fire Blast, Fireball (Rank 2), Frostbolt"
+    elseif class == CLASS_WARLOCK then
+        return "Corruption, Curse of Agony, Immolate, Shadow Bolt, Summon Imp"
+    elseif class == CLASS_DRUID then
+        return "Entangling Roots, Moonfire, Wrath (Rank 2)"
+    else
+        return "abilities that cause damage beyond melee range, or abilities that require a melee weapon to be equipped"
+    end
+end
+
+local function printSpellsICanAndCannotUse()
+    local level = UnitLevel('player');
+    if CharSaved.madeWeapon then
+        printGood("You have made your self-crafted weapon, so you can use any spells and abilities.")
+    else
+        printInfo("You can use " .. whichSpellsCanIUse(PLAYER_CLASS_ID) .. ".")
+        printInfo("You cannot use " .. whichSpellsCanINotUse(PLAYER_CLASS_ID) .. ".")
+    end
 end
 
 -- Allows or disallows an item (or forgets an item if allow == nil). Returns true if the item was found and modified. Returns false if there was an error.
@@ -597,8 +705,8 @@ local function mountaineersCanUseNonLootedItem(itemId)
             return true
         end
         if subclassId == Enum.ItemArmorSubclass.Generic then
-            if (equipLoc == INVTYPE_FINGER and GAME_VERSION >= 2)
-            or (equipLoc == INVTYPE_NECK and GAME_VERSION >= 2)
+            if (equipLoc == INVTYPE_FINGER and gameVersion() >= 2)
+            or (equipLoc == INVTYPE_NECK and gameVersion() >= 2)
             then
                 --print("Armor that can be created via jewelcrafting is not allowed")
                 return false
@@ -672,7 +780,7 @@ local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
                         playSound(ERROR_SOUND_FILE)
                     end
                     challengeIsOver = true
-                elseif skill.rank < rankRequiredAtNextLevel and playerLevel < MAX_LEVEL then
+                elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
                     -- Warn if dinging will invalidate the run.
                     warningCount = warningCount + 1
                     if not hideWarnings then
@@ -707,7 +815,7 @@ local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
                             playSound(ERROR_SOUND_FILE)
                         end
                         challengeIsOver = true
-                    elseif skill.rank < rankRequiredAtNextLevel and playerLevel < MAX_LEVEL then
+                    elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
                         -- Warn if dinging will invalidate the run.
                         warningCount = warningCount + 1
                         if not hideWarnings then
@@ -767,14 +875,14 @@ local function itemIsUncraftable(t)
             if equipLoc == INVTYPE_FINGER
             or equipLoc == INVTYPE_NECK
             then
-                return (GAME_VERSION == 1)
+                return (gameVersion() == 1)
             end
         end
     end
 
     if t.classId == Enum.ItemClass.Consumable then
         if t.subclassId == Enum.ItemConsumableSubclass.Scroll then
-            return (GAME_VERSION < 3)
+            return (gameVersion() < 3)
         end
     end
 
@@ -1318,18 +1426,13 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     end
 
     p1, p2 = str:find("^made weapon$")
-    p3, p4 = str:find("^make weapon$")
-    if p1 or p3 then
-        printGood("You made your self-crafted weapon, congratulations!")
-        CharSaved.madeWeapon = true
-        return
-    end
-
-    p1, p2 = str:find("^unmade weapon$")
-    p3, p4 = str:find("^unmake weapon$")
-    if p1 or p3 then
-        printGood("You are now marked as not yet having made your self-crafted weapon")
-        CharSaved.madeWeapon = false
+    if p1 then
+        CharSaved.madeWeapon = not CharSaved.madeWeapon
+        if CharSaved.madeWeapon then
+            printGood("You are now marked as having made your self-crafted weapon, congratulations! " .. colorText('ffffff', "All your spells and abilities are now unlocked."))
+        else
+            printGood("You are now marked as not yet having made your self-crafted weapon. " .. colorText('ffffff', "You may only use the abilities you were \"born\" with, plus non-damanging spells and abilities."))
+        end
         return
     end
 
@@ -1355,6 +1458,12 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         local warningCount = checkSkills(level)
         gSkillsAreUpToDate = (warningCount == 0)
         checkEquippedItems()
+        return
+    end
+
+    p1, p2 = str:find("^spells$")
+    if p1 then
+        printSpellsICanAndCannotUse()
         return
     end
 
@@ -1449,26 +1558,27 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    print(colorText('ffff00', "/mtn lucky"))
-    print("     Switches you to lucky mountaineer mode.")
+    print(colorText('ffff00', "/mtn lucky/hardtack"))
+    print("     Switches you to lucky or hardtack mountaineer mode.")
 
-    print(colorText('ffff00', "/mtn hardtack"))
-    print("     Switches you to hardtack mountaineer mode.")
-
-    print(colorText('ffff00', "/mtn trailblazer"))
-    print("     Toggles the trailblazer challenge.")
-
-    print(colorText('ffff00', "/mtn lazy"))
-    print("     Toggles the lazy bastard challenge.")
+    print(colorText('ffff00', "/mtn trailblazer/lazy"))
+    print("     Toggles the trailblazer and/or the lazy bastard challenge.")
 
     print(colorText('ffff00', "/mtn check"))
     print("     Checks your skills and currently equipped items for conformance.")
 
+    print(colorText('ffff00', "/mtn made weapon"))
+    print("     Toggles whether or not you made your self-crafted weapon.")
+
+    if CharSaved.madeWeapon then
+        -- Nothing to print.
+    else
+        print(colorText('ffff00', "/mtn spells"))
+        print("     Lists the abilities you may use before making your self-crafted weapon.")
+    end
+
     print(colorText('ffff00', "/mtn version"))
     print("     Shows the current version of the addon.")
-
-    print(colorText('ffff00', "/mtn made weapon"))
-    print("     Tells the addon that you made your self-crafted weapon. Use \"unmake weapon\" to reverse this.")
 
     print(colorText('ffff00', "/mtn sound on/off"))
     print("     Turns addon sounds on or off.")
@@ -1540,51 +1650,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         gPlayerGUID = UnitGUID('player')
 
-        printInfo("Loaded - use /mtn or /mountaineer to access options and features")
+        printInfo("Loaded - type /mtn to access options and features")
         printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
 
-        -- Let the user know what mode they're playing in.
-
-        printGood(whatAmI())
-        if not CharSaved.madeWeapon then
-            printGood("You have not yet made your self-crafted weapon")
-        end
-
-        -- Check the WoW version and set constants accordingly.
-
-        local version, build, date, tocversion = GetBuildInfo()
-        if version:sub(1, 2) == '1.' then
-            -- Classic / vanilla
-            MAX_LEVEL = 60
-            GAME_VERSION = 1
-        elseif version:sub(1, 2) == '2.' then
-            -- TBC
-            MAX_LEVEL = 70
-            GAME_VERSION = 2
-        elseif version:sub(1, 2) == '3.' then
-            -- WotLK
-            MAX_LEVEL = 80
-            GAME_VERSION = 3
-        else
-            printWarning("This addon only designed for WoW versions 1 through 3 -- version " .. version .. " is not supported")
-            GAME_VERSION = 99
-        end
-
-        MAX_SKILL = MAX_LEVEL * 5
-
-        -- Show or hide the minimap based on preferences.
-        -- (Mountaineer 2.0 rules do not allow maps, but we offer flexibility because of the addons buttons around the minimap.)
-
-        if AcctSaved.showMiniMap then
-            MinimapCluster:Show()
-        else
-            MinimapCluster:Hide()
-        end
-
-        -- Hide the left & right gryphons next to the main toolbar.
-
-        --MainMenuBarLeftEndCap:Hide()
-        --MainMenuBarRightEndCap:Hide()
+        -- Get basic player information.
 
         PLAYER_LOC = PlayerLocation:CreateFromUnit("player")
         PLAYER_CLASS_NAME, _, PLAYER_CLASS_ID = C_PlayerInfo.GetClass(PLAYER_LOC)
@@ -1599,6 +1668,35 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             flashWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
             return
         end
+
+        -- Let the user know what mode they're playing in.
+
+        printInfo(whatAmI())
+        if not CharSaved.madeWeapon then
+            printWarning("You have not yet made your self-crafted weapon. You need to do that before reaching level 10.")
+            printSpellsICanAndCannotUse()
+        end
+
+        -- Check the WoW version and set constants accordingly.
+
+        if gameVersion() == 0 then
+            local version, build, date, tocversion = GetBuildInfo()
+            printWarning("This addon only designed for WoW versions 1 through 3 -- version " .. version .. " is not supported")
+        end
+
+        -- Show or hide the minimap based on preferences.
+        -- (Mountaineer 2.0 rules do not allow maps, but we offer flexibility because of the addons buttons around the minimap.)
+
+        if AcctSaved.showMiniMap then
+            MinimapCluster:Show()
+        else
+            MinimapCluster:Hide()
+        end
+
+        -- Hide the left & right gryphons next to the main toolbar.
+
+        --MainMenuBarLeftEndCap:Hide()
+        --MainMenuBarRightEndCap:Hide()
 
         -- Make sure that every default good item is on the current good list and off the bad list.
 
@@ -1659,7 +1757,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'QUEST_DETAIL' or event == 'QUEST_PROGRESS' or event == 'QUEST_COMPLETE' then
 
         gQuestInteraction = true
-        printInfo("Quest interaction begun")
+        printInfo("Quest interaction begun with " .. tostring(gPlayerTargetUnitId))
 
     elseif event == 'QUEST_FINISHED' then
 
@@ -1669,7 +1767,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'MERCHANT_SHOW' then
 
         gMerchantInteraction = true
-        printInfo("Merchant interaction begun")
+        printInfo("Merchant interaction begun with " .. tostring(gPlayerTargetUnitId))
 
     elseif event == 'MERCHANT_CLOSED' then
 
@@ -1708,8 +1806,9 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             printInfo("Item added to bag " .. bag .. " (" .. texturePushed .. ")")
             -- Do the following after a short delay.
             C_Timer.After(.3, function()
-                for slot = 1, GetContainerNumSlots(bag) do
-                    local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = GetContainerItemInfo(bag, slot)
+                local nSlots = getContainerNumSlots(bag)
+                for slot = 1, nSlots do
+                    local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = getContainerItemInfo(bag, slot)
                     if texture and tostring(texture) == tostring(texturePushed) then
                         print('Pushed ' .. tostring(hyperlink)
                             .. '  id='      .. tostring(itemId)
