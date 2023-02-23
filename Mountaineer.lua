@@ -1240,6 +1240,40 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     str = str:lower()
 
+    p1, p2 = str:find("^lucky$")
+    if p1 then
+        CharSaved.isLucky = true
+        printGood("You are now a lucky mountaineer - good luck!")
+        printInfo("You can use any looted items")
+        return
+    end
+
+    p1, p2 = str:find("^hardtack$")
+    p3, p4 = str:find("^ht$")
+    if p1 or p3 then
+        CharSaved.isLucky = false
+        printGood("You are now a hardtack mountaineer - good luck!")
+        printInfo("You CANNOT use looted items")
+        return
+    end
+
+    p1, p2 = str:find("^trailblazer$")
+    p3, p4 = str:find("^tb$")
+    if p1 or p3 then
+        CharSaved.isTrailblazer = not CharSaved.isTrailblazer
+        if CharSaved.isTrailblazer then
+            printGood("You are now doing the Trailblazer challenge - good luck!")
+            printInfo("Delete your hearthstone. You cannot use flight paths.")
+            printInfo("Normal vendor rules apply, but you are also allowed to use")
+            printInfo("anything from a qualifying vendor who is in the open world.")
+            printInfo("All traveling vendors qualify. Stationary vendors qualify if")
+            printInfo("they are nowhere near a flight path.")
+        else
+            printGood("You are no longer doing the Trailblazer Mountaineer Challenge")
+        end
+        return
+    end
+
     p1, p2 = str:find("^sound +on$")
     if p1 then
         setQuiet(false)
@@ -1301,14 +1335,14 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     end
 
     p1, p2 = str:find("^reset everything i really mean it$")
-    if p1 ~= nil then
+    if p1 then
         initSavedVarsIfNec(true)
         printInfo("All allowed/disallowed designations reset to 'factory' settings")
         return
     end
 
     p1, p2 = str:find("^check$")
-    if p1 ~= nil then
+    if p1 then
         local level = UnitLevel('player');
         local warningCount = checkSkills(level)
         gSkillsAreUpToDate = (warningCount == 0)
@@ -1317,37 +1351,43 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     end
 
     p1, p2 = str:find("^version$")
-    if p1 ~= nil then
+    if p1 then
         printGood(ADDON_VERSION)
         return
     end
 
     p1, p2 = str:find("^dq$")
-    if p1 ~= nil then
+    if p1 then
         dumpQuests()
         return
     end
 
     p1, p2 = str:find("^db$")
-    if p1 ~= nil then
+    if p1 then
         dumpBags()
         return
     end
 
     p1, p2, arg1 = str:find("^spell +(.*)$")
-    if arg1 then
+    if p1 and arg1 then
         dumpSpell(arg1)
         return
     end
 
+    print(colorText('ffff00', "/mtn lucky"))
+    print("     Switches you to lucky mountaineer mode.")
+    print(colorText('ffff00', "/mtn hardtack"))
+    print("     Switches you to hardtack mountaineer mode.")
+    print(colorText('ffff00', "/mtn trailblazer"))
+    print("     Toggles the trailblazer challenge.")
+    print(colorText('ffff00', "/mtn check"))
+    print("     Checks your skills and currently equipped items for conformance.")
     print(colorText('ffff00', "/mtn version"))
     print("     Shows the current version of the addon.")
     print(colorText('ffff00', "/mtn sound on/off"))
     print("     Turns addon sounds on or off.")
     print(colorText('ffff00', "/mtn minimap on/off"))
     print("     Turns the minimap on or off.")
-    print(colorText('ffff00', "/mtn check"))
-    print("     Checks your skills and currently equipped items for conformance.")
     print(colorText('ffff00', "/mtn allow {id/name/link}"))
     print("     Allows you to use the item you specify, either by id# or name or link.")
     print("     Example:  \"/mtn allow 7005\",  \"/mtn allow Skinning Knife\"")
@@ -1406,6 +1446,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         printInfo("Loaded - use /mtn or /mountaineer to access options and features")
         printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
+
+        -- Let the user know what mode they're playing in.
+
+        printGood("You are a" .. (CharSaved.isLucky and " lucky" or " hardtack") .. (CharSaved.isTrailblazer and " trailblazer" or "") .. " mountaineer")
 
         -- Check the WoW version and set constants accordingly.
 
