@@ -7,7 +7,7 @@ Created v2 08/2022 by ManchegoMike (MSL)
 http://tinyurl.com/hc-mountaineers
 
 ================================================================================
---]]
+]]
 
 local ADDON_VERSION = '2.0.5' -- This should be the same as in the 'Mountaineer.toc' file.
 
@@ -40,6 +40,12 @@ local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
 
 local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
 local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
+
+local gPlayerOpening = 0            -- 1=opening, 2=opened -- This is set when UNIT_SPELLCAST_SUCCEEDED fires on spell 3365 (Opening); set to 0 on LOOT_CLOSED
+local gPlayerGUID = ''
+local gPlayerTargetUnitId = nil
+local gQuestInteraction = false
+local gMerchantInteraction = false
 
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
 local gSkillsAreUpToDate = false
@@ -269,6 +275,10 @@ Local functions
 
 function tfmt(tbl, indent)
 
+    if type(tbl) ~= 'table' then
+        return 'argument is a ' .. type(tbl) .. ', not a table'
+    end
+
     local function tableContainsTable(tbl)
         for k, v in pairs(tbl) do
             if (type(v) == "table") then
@@ -294,8 +304,8 @@ function tfmt(tbl, indent)
             else
                 s = s .. k .. '='
             end
-            if type(v) == 'number' then
-                s = s .. v
+            if type(v) == 'number' or type(v) == 'boolean' then
+                s = s .. tostring(v)
             elseif (type(v) == 'string') then
                 s = s .. '"' .. v .. '"'
             else
@@ -308,10 +318,10 @@ function tfmt(tbl, indent)
     end
 
     local function tfmtRecursive(tbl, indent)
-        local s = string.rep(' ', indent) .. '{\r\n'
-        indent = indent + 4
         local showedIndex = false
         local expectedIndex = 1
+        local s = string.rep(' ', indent) .. '{\r\n'
+        indent = indent + 4
         for k, v in pairs(tbl) do
             s = s .. string.rep(' ', indent)
             if (type(k) == 'number') then
@@ -322,8 +332,8 @@ function tfmt(tbl, indent)
             else
                 s = s .. k .. ' = '
             end
-            if (type(v) == 'number') then
-                s = s .. v .. ',\r\n'
+            if type(v) == 'number' or type(v) == 'boolean' then
+                s = s .. tostring(v) .. ',\r\n'
             elseif (type(v) == 'string') then
                 s = s .. '"' .. v .. '",\r\n'
             elseif (type(v) == 'table') then
@@ -333,6 +343,7 @@ function tfmt(tbl, indent)
             end
             expectedIndex = expectedIndex + 1
         end
+        indent = indent - 4
         s = s .. string.rep(' ', indent - 4) .. '}'
         return s
     end
@@ -427,6 +438,16 @@ local function playSound(path)
     end
 end
 
+local function dumpSpell(spellId)
+    local name, rank, icon, castTime, minRange, maxRange = GetSpellInfo(spellId)
+    print(name
+        .. (rank and ' (rank ' .. tostring(rank) .. ')' or '')
+        .. '  castTime=' .. tostring(castTime)
+        .. '  minRange=' .. tostring(minRange)
+        .. '  maxRange=' .. tostring(maxRange)
+    )
+end
+
 local function dumpQuests()
     local i = 1
     local isClassQuest = false
@@ -439,6 +460,30 @@ local function dumpQuests()
             printInfo("[" .. level .. "] " .. questID .. ": " .. title .. (isTask and " (task)" or " -") .. (isStory and " (story)" or " -") .. (isComplete and " (done)" or " -") .. (isClassQuest and " (class)" or " -"))
         end
         i = i + 1
+    end
+end
+
+local function dumpBags()
+    for bag = 0, NUM_BAG_SLOTS do
+        if GetContainerNumSlots(bag) > 0 then
+            print("=== Bag " .. bag .. " ===")
+            for slot = 1, GetContainerNumSlots(bag) do
+                local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = GetContainerItemInfo(bag, slot)
+                if texture then
+                    print(tostring(hyperlink)
+                        .. '  id='      .. tostring(itemId)
+                        .. '  quality=' .. tostring(quality)
+                        .. '  count='   .. tostring(stackCount)
+                        .. '  texture=' .. tostring(texture)
+                        .. (isLocked    and '  (locked)'    or '')
+                        .. (isReadable  and '  (readable)'  or '')
+                        .. (isFiltered  and '  (filtered)'  or '')
+                        .. (isBound     and '  (bound)'     or '')
+                        .. (hasNoValue  and '  (novalue)'   or '')
+                    )
+                end
+            end
+        end
     end
 end
 
@@ -966,7 +1011,7 @@ The function returns two values:
         more complete explanation, as you might find in the document.
 
 ================================================================================
---]]
+]]
 
 local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewardedByUnitId)
 
@@ -1283,6 +1328,18 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2 = str:find("^db$")
+    if p1 ~= nil then
+        dumpBags()
+        return
+    end
+
+    p1, p2, arg1 = str:find("^spell +(.*)$")
+    if arg1 then
+        dumpSpell(arg1)
+        return
+    end
+
     print(colorText('ffff00', "/mtn version"))
     print("     Shows the current version of the addon.")
     print(colorText('ffff00', "/mtn sound on/off"))
@@ -1316,20 +1373,36 @@ Event processing
 ]]
 
 local EventFrame = CreateFrame('frame', 'EventFrame')
-EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
 EventFrame:RegisterEvent('CHAT_MSG_LOOT')
 EventFrame:RegisterEvent('CHAT_MSG_SKILL')
+EventFrame:RegisterEvent('ITEM_PUSH')
+EventFrame:RegisterEvent('LOOT_CLOSED')
+EventFrame:RegisterEvent('LOOT_READY')
+EventFrame:RegisterEvent('LOOT_SLOT_CLEARED')
+EventFrame:RegisterEvent('MERCHANT_CLOSED')
+EventFrame:RegisterEvent('MERCHANT_SHOW')
 EventFrame:RegisterEvent('PLAYER_CAMPING')
-EventFrame:RegisterEvent('PLAYER_LEVEL_UP')
-EventFrame:RegisterEvent('PLAYER_XP_UPDATE')
-EventFrame:RegisterEvent('PLAYER_UPDATE_RESTING')
+EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
 EventFrame:RegisterEvent('PLAYER_EQUIPMENT_CHANGED')
+EventFrame:RegisterEvent('PLAYER_LEVEL_UP')
 EventFrame:RegisterEvent('PLAYER_REGEN_DISABLED')
+EventFrame:RegisterEvent('PLAYER_TARGET_CHANGED')
+EventFrame:RegisterEvent('PLAYER_UPDATE_RESTING')
+EventFrame:RegisterEvent('PLAYER_XP_UPDATE')
+EventFrame:RegisterEvent('QUEST_COMPLETE')
+EventFrame:RegisterEvent('QUEST_DETAIL')
+EventFrame:RegisterEvent('QUEST_FINISHED')
+EventFrame:RegisterEvent('QUEST_PROGRESS')
+EventFrame:RegisterEvent('UNIT_SPELLCAST_INTERRUPTED')
 EventFrame:RegisterEvent('UNIT_SPELLCAST_SENT')
+EventFrame:RegisterEvent('UNIT_SPELLCAST_STOP')
+EventFrame:RegisterEvent('UNIT_SPELLCAST_SUCCEEDED')
 
 EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     if event == 'PLAYER_ENTERING_WORLD' then
+
+        gPlayerGUID = UnitGUID('player')
 
         printInfo("Loaded - use /mtn or /mountaineer to access options and features")
         printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
@@ -1438,6 +1511,99 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
             end)
 
+        end
+
+    elseif event == 'QUEST_DETAIL' or event == 'QUEST_PROGRESS' or event == 'QUEST_COMPLETE' then
+
+        gQuestInteraction = true
+        printInfo("Quest interaction begun")
+
+    elseif event == 'QUEST_FINISHED' then
+
+        gQuestInteraction = false
+        printInfo("Quest interaction ended")
+
+    elseif event == 'MERCHANT_SHOW' then
+
+        gMerchantInteraction = true
+        printInfo("Merchant interaction begun")
+
+    elseif event == 'MERCHANT_CLOSED' then
+
+        gMerchantInteraction = false
+        printInfo("Merchant interaction ended")
+
+    elseif event == 'LOOT_READY' then
+
+        printInfo("Loot table:")
+        local nLootItems = GetNumLootItems()
+        local lootTable = GetLootInfo()
+        print("Loot count = " .. #lootTable)
+        for i = 1, #lootTable do
+            print(tfmt(lootTable[i]))
+            --local isQuestItem, name, isLocked, quality, count, isRoll, textureId = item
+            --printInfo(name
+            --    .. '  count='   .. tostring(count)
+            --    .. '  quality=' .. tostring(quality)
+            --    .. '  texture=' .. tostring(textureId)
+            --    .. (isLocked    and '  (locked)'    or '')
+            --)
+        end
+
+    elseif event == 'LOOT_SLOT_CLEARED' then
+
+    elseif event == 'LOOT_CLOSED' then
+
+        -- In case the item being looted is a chest or other item that was opened, we turn off this flag.
+        gPlayerOpening = 0
+        printGood("Closed it")
+
+    elseif event == 'ITEM_PUSH' then
+
+        local bag, texturePushed = ...
+        if bag >= 0 then
+            printInfo("Item added to bag " .. bag .. " (" .. texturePushed .. ")")
+            -- Do the following after a short delay.
+            C_Timer.After(.3, function()
+                for slot = 1, GetContainerNumSlots(bag) do
+                    local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = GetContainerItemInfo(bag, slot)
+                    if texture and tostring(texture) == tostring(texturePushed) then
+                        print('Pushed ' .. tostring(hyperlink)
+                            .. '  id='      .. tostring(itemId)
+                            .. '  quality=' .. tostring(quality)
+                            .. '  count='   .. tostring(stackCount)
+                            .. (isLocked    and '  (locked)'    or '')
+                            .. (isReadable  and '  (readable)'  or '')
+                            .. (isFiltered  and '  (filtered)'  or '')
+                            .. (isBound     and '  (bound)'     or '')
+                            .. (hasNoValue  and '  (novalue)'   or '')
+                        )
+                    end
+                end
+            end)
+        end
+
+    elseif event == 'PLAYER_TARGET_CHANGED' then
+
+        local guid = UnitGUID('target')
+        local name = UnitName('target')
+        if not guid then
+            gPlayerTargetUnitId = nil
+        elseif guid == gPlayerGUID then
+            gPlayerTargetUnitId = nil
+        else
+            local unitType = strsplit("-", guid)
+            -- We only care about Creatures, which are basically NPCs.
+            if unitType == 'Creature' then
+                local _, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", guid)
+                gPlayerTargetUnitId = unitId
+                printInfo("Targeting NPC " .. name .. " (" .. unitId .. ")")
+            elseif unitType == 'Player' then
+                printInfo("Targeting player " .. name)
+            else
+                printInfo("Targeting " .. name .. " (" .. guid .. ")")
+                gPlayerTargetUnitId = nil
+            end
         end
 
     elseif event == 'PLAYER_REGEN_DISABLED' then
@@ -1660,6 +1826,11 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         -- Do the following after a short delay.
         C_Timer.After(.1, function()
 
+            if unitTarget == 'player' and spellId == 3365 then
+                gPlayerOpening = 1
+                printGood("Opening something")
+            end
+
             if PLAYER_CLASS_ID == CLASS_HUNTER and spellId == 982 then -- Revive Pet
                 local msg = "Pets are mortal, you must abandon after reviving"
                 printWarning(msg)
@@ -1668,6 +1839,22 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             end
 
         end)
+
+    elseif event == 'UNIT_SPELLCAST_SUCCEEDED' then
+
+        local unitTarget, _, castGUID, spellId = ...
+        --printGood("UNIT_SPELLCAST_SUCCEEDED " .. unitTarget .. " " .. tostring(spellId))
+
+        if unitTarget == 'player' and gPlayerOpening == 1 then -- Opening
+            -- This happens when the player is opening something like a chest.
+            gPlayerOpening = 2
+            printGood("Opened something")
+        end
+
+    elseif event == 'UNIT_SPELLCAST_STOP' or event == 'UNIT_SPELLCAST_INTERRUPTED' then
+
+        gPlayerOpening = 0
+        printGood("Closed it")
 
     end
 
