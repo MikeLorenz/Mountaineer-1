@@ -59,6 +59,54 @@ local gNewDefaultGoodItems = {
     [ '6532'] = "Used for fishing", -- bright baubles
     [ '6533'] = "Used for fishing", -- aquadynamic fish attractor
     [ '7005'] = "Used for profession and as a crude weapon", -- skinning knife
+    ['52021'] = "Made via engineering", -- Iceblade Arrow
+    ['41164'] = "Made via engineering", -- Mammoth Cutters
+    ['41165'] = "Made via engineering", -- Saronite Razorheads
+    ['52020'] = "Made via engineering", -- Shatter Rounds
+    ['10512'] = "Made via engineering", -- Hi-Impact Mithril Slugs
+    ['15997'] = "Made via engineering", -- Thorium Shells
+    ['10513'] = "Made via engineering", -- Mithril Gyro-Shot
+    ['23772'] = "Made via engineering", -- Fel Iron Shells
+    [ '8067'] = "Made via engineering", -- Crafted Light Shot
+    [ '8068'] = "Made via engineering", -- Crafted Heavy Shot
+    [ '8069'] = "Made via engineering", -- Crafted Solid Shot
+    ['23773'] = "Made via engineering", -- Adamantite Shells
+    ['18042'] = "Make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
+    ['33803'] = "Made via engineering", -- Adamantite Stinger
+}
+
+local gNewDefaultBadItems = {
+    ['11285'] = "Vendor-only", -- Jagged Arrow
+    [ '3030'] = "Vendor-only", -- Razor Arrow
+    ['28056'] = "Vendor-only", -- Blackflight Arrow
+    ['31737'] = "Vendor-only", -- Timeless Arrow
+    ['28053'] = "Vendor-only", -- Wicked Arrow
+    ['41586'] = "Vendor-only", -- Terrorshaft Arrow
+    [ '3464'] = "Approved", -- Feathered Arrow
+    [ '2515'] = "Vendor-only", -- Sharp Arrow
+    ['41584'] = "Vendor-only", -- Frostbite Bullets
+    ['34581'] = "Vendor-only", -- Mysterious Arrow
+    ['11284'] = "Vendor-only", -- Accurate Slugs
+    [ '2519'] = "Vendor-only", -- Heavy Shot
+    [ '3033'] = "Vendor-only", -- Solid Shot
+    [ '3465'] = "Approved", -- Exploding Shot
+    ['31735'] = "Vendor-only", -- Timeless Shell
+    [ '2512'] = "Vendor-only", -- Rough Arrow
+    ['28061'] = "Vendor-only", -- Ironbite Shell
+    ['10579'] = "Requires a vendor-only item", -- Explosive Arrow
+    ['28060'] = "Vendor-only", -- Impact Shot
+    ['19316'] = "Vendor-only", -- Ice Threaded Arrow
+    ['19317'] = "Vendor-only", -- Ice Threaded Bullet
+    ['32882'] = "Vendor-only", -- Hellfire Shot
+    [ '2516'] = "Vendor-only", -- Light Shot
+    ['31949'] = "Vendor-only", -- Warden's Arrow
+    ['30611'] = "Vendor-only", -- Halaani Razorshaft
+    ['24412'] = "Vendor-only", -- Warden's Arrow
+    ['30612'] = "Vendor-only", -- Halaani Grimshot
+    ['32761'] = "Vendor-only", -- The Sarge's Bullet
+    ['32883'] = "Vendor-only", -- Felbane Slugs
+    ['24417'] = "Vendor-only", -- Scout's Arrow
+    ['34582'] = "Vendor-only", -- Mysterious Shell
 }
 
 local gDefaultGoodItems = {
@@ -909,12 +957,7 @@ local function itemIsFoodOrDrink(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    --print("itemIsFoodOrDrink:"
-    --    .. "  class=" .. tostring(t.classId)
-    --    .. "  subclass=" .. tostring(t.subclassId)
-    --)
-
-    return (t.classId == 0 and t.subclassId == 0) -- class 0 = consumable, subclass 0 = fooddrink
+    return (t.classId == 0 and t.subclassId == 5) -- class 0 = consumable, subclass 5 = fooddrink
 
 end
 
@@ -1062,6 +1105,15 @@ local function itemIsRare(t)
 
 end
 
+-- Returns true if the item's rarity is gray.
+local function itemIsGray(t)
+
+    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+
+    return (t.rarity and t.rarity == 0)
+
+end
+
 -- Returns true if the unit is labelled as rare or rare elite, meaning that it can be looted.
 local function unitIsRare(unitId)
 
@@ -1161,6 +1213,10 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
         return
     end
 
+    --if not string.find(itemId, "^%d+$") then
+    --    print("ITEM -> " .. itemId)
+    --end
+
     initSavedVarsIfNec()
 
     -- Place detailed item information into an array of results so that each individual function we
@@ -1168,6 +1224,14 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
     -- game is smart enough to cache it, but who knows.
     -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
     GetItemInfo(itemId)
+
+    -- Do the following after a short delay as a last resort in case GET_ITEM_INFO_RECEIVED never fires.
+    C_Timer.After(.25, function()
+        local func = Queue.pop(functionQueue)
+        if func then
+            func()
+        end
+    end)
 
     Queue.push(functionQueue, function ()
 
@@ -1235,6 +1299,16 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
                 return
             end
 
+            if itemIsGray(t) == 0 then
+                -- Grey items are always looted. You can't buy them or get them as quest rewards.
+                if CharSaved.isLucky then
+                    completionFunc(1, t.link, "Lucky mountaineers can use any looted gray quality items")
+                else
+                    completionFunc(0, t.link, "Hardtack mountaineers cannot use looted gray quality items")
+                end
+                return
+            end
+
             if itemIsASpecialContainer(t) then
                 completionFunc(2, t.link, "Special containers can be accepted as quest rewards, but cannot be purchased or looted")
                 return
@@ -1245,17 +1319,19 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
                 return
             end
 
-            if t.rarity == 0 and not CharSaved.isLucky then
-                -- Grey items are always looted.
-                completionFunc(0, t.link, "Hardtack mountaineers cannot use gray quality items")
-                return
-            end
-
             if CharSaved.isLucky then
-                completionFunc(2, t.link, "Lucky mountaineers can use this item if it was looted, but not if it was purchased or accepted as a quest reward")
+                if CharSaved.isTrailblazer then
+                    completionFunc(2, t.link, "Lucky trailblazer mountaineers can only use this item if it is self-made, looted, or purchased from an open-world vendor")
+                else
+                    completionFunc(2, t.link, "Lucky mountaineers can only use this item if it is self-made or looted")
+                end
                 return
             else
-                completionFunc(2, t.link, "Hardtack mountaineers can only use this item if it is self-made")
+                if CharSaved.isTrailblazer then
+                    completionFunc(2, t.link, "Hardtack trailblazer mountaineers can only use this item if it is self-made, looted from a rare mob, or purchased from an open-world vendor")
+                else
+                    completionFunc(2, t.link, "Hardtack mountaineers can only use this item if it is self-made or looted from a rare mob")
+                end
                 return
             end
 
@@ -1833,16 +1909,14 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         printInfo("Loot table:")
         local nLootItems = GetNumLootItems()
         local lootTable = GetLootInfo()
-        print("Loot count = " .. #lootTable)
+        for i = 1, #lootTable do
+            local sources = {GetLootSourceInfo(i)}
+            local _, name = GetLootSlotInfo(i)
+            -- Add the first source GUID to the loot table item. (In Era, TBC, Wrath there is only 1 source.)
+            lootTable[i].source = sources[1]
+        end
         for i = 1, #lootTable do
             print(tfmt(lootTable[i]))
-            --local isQuestItem, name, isLocked, quality, count, isRoll, textureId = item
-            --printInfo(name
-            --    .. '  count='   .. tostring(count)
-            --    .. '  quality=' .. tostring(quality)
-            --    .. '  texture=' .. tostring(textureId)
-            --    .. (isLocked    and '  (locked)'    or '')
-            --)
         end
 
     elseif event == 'LOOT_SLOT_CLEARED' then
