@@ -45,6 +45,22 @@ local gMerchantInteraction = false
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
 local gSkillsAreUpToDate = false
 
+-- This list is shorter than before because I've done a better job of allowing items according to their categories.
+local gNewDefaultGoodItems = {
+    [ '2901'] = "Used for profession and as a crude weapon", -- mining pick
+    [ '3342'] = "Looted from a chest", -- captain sander's shirt
+    [ '3343'] = "Looted from a chest", -- captain sander's booty bag
+    [ '3344'] = "Looted from a chest", -- captain sander's sash
+    [ '5976'] = "Basic item used for guilds", -- guild tabard
+    [ '6256'] = "Used for profession and as a crude weapon", -- fishing pole
+    [ '6365'] = "Used for profession and as a crude weapon", -- strong fishing pole
+    [ '6529'] = "Used for fishing", -- shiny bauble
+    [ '6530'] = "Used for fishing", -- nightcrawlers
+    [ '6532'] = "Used for fishing", -- bright baubles
+    [ '6533'] = "Used for fishing", -- aquadynamic fish attractor
+    [ '7005'] = "Used for profession and as a crude weapon", -- skinning knife
+}
+
 local gDefaultGoodItems = {
     [  '159'] = true, -- refreshing spring water
     [  '765'] = true, -- silverleaf (herb)
@@ -235,31 +251,6 @@ local gDefaultGoodItems = {
     ['38518'] = true, -- cro's apple
 }
 
--- This list is shorter than before because I've done a better job of allowing items according to their categories.
-local gNewDefaultGoodItems = {
-    [ '2665'] = true, -- stormwind seasoning herbs
-    [ '2901'] = true, -- mining pick
-    [ '3342'] = true, -- captain sander's shirt
-    [ '3343'] = true, -- captain sander's booty bag
-    [ '3344'] = true, -- captain sander's sash
-    [ '4471'] = true, -- flint and tinder
-    [ '5060'] = true, -- thieves' tools
-    [ '5976'] = true, -- guild tabard
-    [ '6217'] = true, -- copper rod
-    [ '6256'] = true, -- fishing pole
-    [ '6365'] = true, -- strong fishing pole
-    [ '7005'] = true, -- skinning knife
-    ['17031'] = true, -- rune of teleportation
-    ['17032'] = true, -- rune of portals
-    ['17033'] = true, -- symbol of divinity
-    ['17034'] = true, -- maple seed
-    ['17035'] = true, -- stranglethorn seed
-    ['17036'] = true, -- ashwood seed
-    ['17037'] = true, -- hornbeam seed
-    ['17038'] = true, -- ironwood seed
-    ['21177'] = true, -- symbol of kings
-}
-
 --[[
 ================================================================================
 
@@ -351,6 +342,27 @@ function tfmt(tbl, indent)
 
 end
 
+local Queue = {}
+
+function Queue.new()
+    return {first = 0, last = -1}
+end
+
+function Queue.push(q, value)
+    local last = q.last + 1
+    q.last = last
+    q[last] = value
+end
+
+function Queue.pop(q)
+    local first = q.first
+    if first > q.last then return nil end
+    local value = q[first]
+    q[first] = nil -- allow gc
+    q.first = first + 1
+    return value
+end
+
 --[[
 ================================================================================
 
@@ -429,10 +441,12 @@ end
 --[[
 ================================================================================
 
-Local functions for this addon
+Local vars and functions for this addon
 
 ================================================================================
 ]]
+
+local functionQueue = Queue.new()
 
 local function initSavedVarsIfNec(force)
     if force or AcctSaved == nil then
@@ -448,10 +462,11 @@ local function initSavedVarsIfNec(force)
     end
     if force or CharSaved == nil then
         CharSaved = {
-            xpFromLastGain = 0,
             isLucky = true,
             isTrailblazer = false,
+            items = {},
             madeWeapon = false,
+            xpFromLastGain = 0,
         }
     end
 end
@@ -894,10 +909,10 @@ local function itemIsFoodOrDrink(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    print("itemIsFoodOrDrink:"
-        .. "  class=" .. tostring(t.classId)
-        .. "  subclass=" .. tostring(t.subclassId)
-    )
+    --print("itemIsFoodOrDrink:"
+    --    .. "  class=" .. tostring(t.classId)
+    --    .. "  subclass=" .. tostring(t.subclassId)
+    --)
 
     return (t.classId == 0 and t.subclassId == 0) -- class 0 = consumable, subclass 0 = fooddrink
 
@@ -1138,11 +1153,12 @@ The function returns 3 values:
 ================================================================================
 ]]
 
-local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewardedByUnitId)
+local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewardedByUnitId, completionFunc)
 
     itemId = itemId .. ''
     if itemId == '' or itemId == '0' then
-        return false, "", "no item id"
+        completionFunc(false, "", "no item id")
+        return
     end
 
     initSavedVarsIfNec()
@@ -1151,152 +1167,185 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
     -- call doesn't have to call GetItemInfo, which gets its data from the server. Presumably the
     -- game is smart enough to cache it, but who knows.
     -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
-    local t = {}
-    t.itemId = itemId
-    t.name, t.link, t.rarity, t.level, t.minLevel, t.type, t.subType, t.stackCount, t.equipLoc, t.texture, t.sellPrice, t.classId, t.subclassId, t.bindType, t.expacId, t.setId, t.isCraftingReagent = GetItemInfo(itemId)
-    print(tfmt(t))
+    GetItemInfo(itemId)
 
-    --local itemInfo = {itemId, GetItemInfo(itemId)}
-    --local id, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = unpack(itemInfo)
+    Queue.push(functionQueue, function ()
 
-    -- If the item is already on the allowed list, we don't need to use any logic.
-    if gDefaultGoodItems[itemId] then
-        return true, t.link, "on the pre-approved list", link
-    end
+        local t = {}
+        t.itemId = itemId
+        t.name, t.link, t.rarity, t.level, t.minLevel, t.type, t.subType, t.stackCount, t.equipLoc, t.texture, t.sellPrice, t.classId, t.subclassId, t.bindType, t.expacId, t.setId, t.isCraftingReagent = GetItemInfo(itemId)
+        print("HI THERE: " .. tfmt(t))
 
-    -- If the item is already on the allowed list, we don't need to use any logic.
-    if AcctSaved.goodItems[itemId] then
-        return true, t.link, "on your approved list"
-    end
+        --local itemInfo = {itemId, GetItemInfo(itemId)}
+        --local id, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = unpack(itemInfo)
 
-    -- Convenience booleans that make the code below a little easier to read.
-    local isLooted    = (lootedFromUnitId    ~= nil)
-    local isPurchased = (purchasedFromUnitId ~= nil)
-    local isRewarded  = (rewardedByUnitId    ~= nil)
-
-    -- Make sure there is ONE AND ONLY ONE source.
-    local                 sourceCount = 0;
-    if isLooted     then  sourceCount = sourceCount + 1  end
-    if isPurchased  then  sourceCount = sourceCount + 1  end
-    if isRewarded   then  sourceCount = sourceCount + 1  end
-    if sourceCount > 1 then
-        return false, t.link, sourceCount .. " item sources were specified"
-    end
-
-    if sourceCount == 0 then
-
-        -- We don't know where the item came from.
-
-        if itemIsUsableForAProfession(t) then
-            return 1, t.link, "Items usable by a profession can be purchased, looted, or accepted as quest rewards"
+        -- If the item is already on the allowed list, we don't need to use any logic.
+        if gNewDefaultGoodItems[itemId] then
+            completionFunc(1, t.link, gNewDefaultGoodItems[itemId], link)
+            return
         end
 
-        if itemIsADrink(t) then
-            return 1, t.link, "Drinks can be purchased, looted, or accepted as quest rewards"
+        -- If the item is already on the allowed list, we don't need to use any logic.
+        --if AcctSaved.goodItems[itemId] then
+        --    completionFunc(true, t.link, "on your approved list")
+        --    return
+        --end
+
+        -- Convenience booleans that make the code below a little easier to read.
+        local isLooted    = (lootedFromUnitId    ~= nil)
+        local isPurchased = (purchasedFromUnitId ~= nil)
+        local isRewarded  = (rewardedByUnitId    ~= nil)
+
+        -- Make sure there is ONE AND ONLY ONE source.
+        local                 sourceCount = 0;
+        if isLooted     then  sourceCount = sourceCount + 1  end
+        if isPurchased  then  sourceCount = sourceCount + 1  end
+        if isRewarded   then  sourceCount = sourceCount + 1  end
+        if sourceCount > 1 then
+            completionFunc(0, t.link, sourceCount .. " item sources were specified")
+            return
         end
 
-        if itemIsFoodOrDrink(t) then
-            return 2, t.link, "Food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed"
-        end
+        if sourceCount == 0 then
 
-        if itemIsUncraftable(t) then
-            return 2, t.link, "Uncraftable items can be looted or accepted as quest rewards, but cannot be purchased"
-        end
+            -- We don't know where the item came from.
 
-        if itemIsRare(t) then
-            return 2, t.link, "Rare items can be looted, but cannot be purchased or accepted as quest rewards"
-        end
-
-        if itemIsASpecialContainer(t) then
-            return 2, t.link, "Special containers can be accepted as quest rewards, but cannot be purchased or looted"
-        end
-
-        if itemIsFromClassQuest(t) then
-            return 2, t.link, "Class quest rewards can be accepted"
-        end
-
-        if t.rarity == 0 and not CharSaved.isLucky then
-            -- Grey items are always looted.
-            return 0, t.link, "Hardtack mountaineers cannot use gray quality items"
-        end
-
-        if CharSaved.isLucky then
-            return 2, t.link, "Lucky mountaineers can use this item if it was looted, but not if it was purchased or accepted as a quest reward"
-        else
-            return 2, t.link, "Hardtack mountaineers can only use this item if it is self-made"
-        end
-
-    else
-
-        -- We know where the item came from.
-
-        if itemIsUsableForAProfession(t) then
-            return 1, t.link, "Used by a profession"
-        end
-
-        if itemIsADrink(t) then
-            return 1, t.link, "Drink"
-        end
-
-        if isPurchased then
-
-            if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
-                return 1, t.link, "Trailblazer approved vendor"
+            if itemIsUsableForAProfession(t) then
+                completionFunc(1, t.link, "Reagents & items usable by a profession can be purchased, looted, or accepted as quest rewards")
+                return
             end
 
-            return 0, t.link, "Vendor"
-
-        end
-
-        -- TODO: Need to figure out if the item came from a chest or fishing.
-
-        if isLooted or isRewarded then
+            if itemIsADrink(t) then
+                completionFunc(1, t.link, "Drinks can be purchased, looted, or accepted as quest rewards")
+                return
+            end
 
             if itemIsFoodOrDrink(t) then
-                return 1, t.link, "Food"
+                completionFunc(2, t.link, "Food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed")
+                return
             end
 
             if itemIsUncraftable(t) then
-                return 1, t.link, "Uncraftable item"
-            end
-
-        end
-
-        if isLooted then
-
-            if CharSaved.isLucky then
-                return 1, t.link, "Looted"
+                completionFunc(2, t.link, "Uncraftable items can be looted or accepted as quest rewards, but cannot be purchased")
+                return
             end
 
             if itemIsRare(t) then
-                return 1, t.link, "Rare item"
+                completionFunc(2, t.link, "Rare items can be looted, but cannot be purchased or accepted as quest rewards")
+                return
             end
-
-            if unitIsRare(lootedFromUnitId) then
-                return 1, t.link, "Looted from rare mob"
-            end
-
-            return 0, t.link, "Looted"
-
-        end
-
-        if isRewarded then
 
             if itemIsASpecialContainer(t) then
-                return 1, t.link, "Special container"
+                completionFunc(2, t.link, "Special containers can be accepted as quest rewards, but cannot be purchased or looted")
+                return
             end
 
             if itemIsFromClassQuest(t) then
-                return 1, t.link, "Class quest reward"
+                completionFunc(2, t.link, "Class quest rewards can be accepted")
+                return
             end
 
-            return 0, t.link, "Quest reward"
+            if t.rarity == 0 and not CharSaved.isLucky then
+                -- Grey items are always looted.
+                completionFunc(0, t.link, "Hardtack mountaineers cannot use gray quality items")
+                return
+            end
+
+            if CharSaved.isLucky then
+                completionFunc(2, t.link, "Lucky mountaineers can use this item if it was looted, but not if it was purchased or accepted as a quest reward")
+                return
+            else
+                completionFunc(2, t.link, "Hardtack mountaineers can only use this item if it is self-made")
+                return
+            end
+
+        else
+
+            -- We know where the item came from.
+
+            if itemIsUsableForAProfession(t) then
+                completionFunc(1, t.link, "Reagent / profession item")
+                return
+            end
+
+            if itemIsADrink(t) then
+                completionFunc(1, t.link, "Drink")
+                return
+            end
+
+            if isPurchased then
+
+                if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
+                    completionFunc(1, t.link, "Trailblazer approved vendor")
+                    return
+                end
+
+                completionFunc(0, t.link, "Vendor")
+                return
+
+            end
+
+            -- TODO: Need to figure out if the item came from a chest or fishing.
+
+            if isLooted or isRewarded then
+
+                if itemIsFoodOrDrink(t) then
+                    completionFunc(1, t.link, "Food")
+                    return
+                end
+
+                if itemIsUncraftable(t) then
+                    completionFunc(1, t.link, "Uncraftable item")
+                    return
+                end
+
+            end
+
+            if isLooted then
+
+                if CharSaved.isLucky then
+                    completionFunc(1, t.link, "Looted")
+                    return
+                end
+
+                if itemIsRare(t) then
+                    completionFunc(1, t.link, "Rare item")
+                    return
+                end
+
+                if unitIsRare(lootedFromUnitId) then
+                    completionFunc(1, t.link, "Looted from rare mob")
+                    return
+                end
+
+                completionFunc(0, t.link, "Looted")
+                return
+
+            end
+
+            if isRewarded then
+
+                if itemIsASpecialContainer(t) then
+                    completionFunc(1, t.link, "Special container")
+                    return
+                end
+
+                if itemIsFromClassQuest(t) then
+                    completionFunc(1, t.link, "Class quest reward")
+                    return
+                end
+
+                completionFunc(0, t.link, "Quest reward")
+                return
+
+            end
+
+            completionFunc(0, t.link, "Failed all tests")
+            return
 
         end
 
-        return 0, t.link, "Failed all tests"
-
-    end
+    end)
 
 end
 
@@ -1438,17 +1487,21 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2, arg1 = str:find("^check +(.*)$")
     if p1 and arg1 then
-        local ok, link, why = itemCanBeUsed(arg1)
-        if ok == 0 then
-            if not link then link = "That item" end
-            printWarning(link .. " cannot be used: " .. why)
-        elseif ok == 1 then
-            if not link then link = "That item" end
-            printGood(link .. " can be used: " .. why)
-        else
-            if not link then link = "Unknown item" end
-            printInfo(link .. ": " .. why)
-        end
+        itemCanBeUsed(arg1, nil, nil, nil, function(ok, link, why)
+            if ok == 0 then
+                if not link then link = "That item" end
+                printWarning(link .. " cannot be used: " .. why)
+            elseif ok == 1 then
+                if not link then link = "That item" end
+                printGood(link .. " can be used: " .. why)
+            else
+                if link then
+                    printInfo(link .. ": " .. why)
+                else
+                    printWarning("Unable to look up item - please try again")
+                end
+            end
+        end)
         return
     end
 
@@ -1619,6 +1672,7 @@ Event processing
 local EventFrame = CreateFrame('frame', 'EventFrame')
 EventFrame:RegisterEvent('CHAT_MSG_LOOT')
 EventFrame:RegisterEvent('CHAT_MSG_SKILL')
+EventFrame:RegisterEvent('GET_ITEM_INFO_RECEIVED')
 EventFrame:RegisterEvent('ITEM_PUSH')
 EventFrame:RegisterEvent('LOOT_CLOSED')
 EventFrame:RegisterEvent('LOOT_READY')
@@ -2102,6 +2156,15 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         gPlayerOpening = 0
         printGood("Closed it")
+
+    elseif event == 'GET_ITEM_INFO_RECEIVED' then
+
+
+        local func = Queue.pop(functionQueue)
+        if func then
+            --print('GET_ITEM_INFO_RECEIVED')
+            func()
+        end
 
     end
 
