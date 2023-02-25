@@ -21,70 +21,71 @@ local gPlayerGUID = ''
 local gLastUnitTargeted = nil
 local gQuestInteraction = false
 local gMerchantInteraction = false
+local gLastLootSourceGUID = ''
 
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
 local gSkillsAreUpToDate = false
 
 -- This list is shorter than before because I've done a better job of allowing items according to their categories.
 local gNewDefaultGoodItems = {
-    [ '2901'] = "Used for profession and as a crude weapon", -- mining pick
-    [ '3342'] = "Looted from a chest", -- captain sander's shirt
-    [ '3343'] = "Looted from a chest", -- captain sander's booty bag
-    [ '3344'] = "Looted from a chest", -- captain sander's sash
-    [ '5976'] = "Basic item used for guilds", -- guild tabard
-    [ '6256'] = "Used for profession and as a crude weapon", -- fishing pole
-    [ '6365'] = "Used for profession and as a crude weapon", -- strong fishing pole
-    [ '6529'] = "Used for fishing", -- shiny bauble
-    [ '6530'] = "Used for fishing", -- nightcrawlers
-    [ '6532'] = "Used for fishing", -- bright baubles
-    [ '6533'] = "Used for fishing", -- aquadynamic fish attractor
-    [ '7005'] = "Used for profession and as a crude weapon", -- skinning knife
-    ['52021'] = "Made via engineering", -- Iceblade Arrow
-    ['41164'] = "Made via engineering", -- Mammoth Cutters
-    ['41165'] = "Made via engineering", -- Saronite Razorheads
-    ['52020'] = "Made via engineering", -- Shatter Rounds
-    ['10512'] = "Made via engineering", -- Hi-Impact Mithril Slugs
-    ['15997'] = "Made via engineering", -- Thorium Shells
-    ['10513'] = "Made via engineering", -- Mithril Gyro-Shot
-    ['23772'] = "Made via engineering", -- Fel Iron Shells
-    [ '8067'] = "Made via engineering", -- Crafted Light Shot
-    [ '8068'] = "Made via engineering", -- Crafted Heavy Shot
-    [ '8069'] = "Made via engineering", -- Crafted Solid Shot
-    ['23773'] = "Made via engineering", -- Adamantite Shells
-    ['18042'] = "Make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
-    ['33803'] = "Made via engineering", -- Adamantite Stinger
+    [ '2901'] = "used for profession and as a crude weapon", -- mining pick
+    [ '3342'] = "looted from a chest", -- captain sander's shirt
+    [ '3343'] = "looted from a chest", -- captain sander's booty bag
+    [ '3344'] = "looted from a chest", -- captain sander's sash
+    [ '5976'] = "basic item used for guilds", -- guild tabard
+    [ '6256'] = "used for profession and as a crude weapon", -- fishing pole
+    [ '6365'] = "used for profession and as a crude weapon", -- strong fishing pole
+    [ '6529'] = "used for fishing", -- shiny bauble
+    [ '6530'] = "used for fishing", -- nightcrawlers
+    [ '6532'] = "used for fishing", -- bright baubles
+    [ '6533'] = "used for fishing", -- aquadynamic fish attractor
+    [ '7005'] = "used for profession and as a crude weapon", -- skinning knife
+    ['52021'] = "made via engineering", -- Iceblade Arrow
+    ['41164'] = "made via engineering", -- Mammoth Cutters
+    ['41165'] = "made via engineering", -- Saronite Razorheads
+    ['52020'] = "made via engineering", -- Shatter Rounds
+    ['10512'] = "made via engineering", -- Hi-Impact Mithril Slugs
+    ['15997'] = "made via engineering", -- Thorium Shells
+    ['10513'] = "made via engineering", -- Mithril Gyro-Shot
+    ['23772'] = "made via engineering", -- Fel Iron Shells
+    [ '8067'] = "made via engineering", -- Crafted Light Shot
+    [ '8068'] = "made via engineering", -- Crafted Heavy Shot
+    [ '8069'] = "made via engineering", -- Crafted Solid Shot
+    ['23773'] = "made via engineering", -- Adamantite Shells
+    ['18042'] = "make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
+    ['33803'] = "made via engineering", -- Adamantite Stinger
 }
 
 local gNewDefaultBadItems = {
-    ['11285'] = "Vendor-only", -- Jagged Arrow
-    [ '3030'] = "Vendor-only", -- Razor Arrow
-    ['28056'] = "Vendor-only", -- Blackflight Arrow
-    ['31737'] = "Vendor-only", -- Timeless Arrow
-    ['28053'] = "Vendor-only", -- Wicked Arrow
-    ['41586'] = "Vendor-only", -- Terrorshaft Arrow
-    [ '2515'] = "Vendor-only", -- Sharp Arrow
-    ['41584'] = "Vendor-only", -- Frostbite Bullets
-    ['34581'] = "Vendor-only", -- Mysterious Arrow
-    ['11284'] = "Vendor-only", -- Accurate Slugs
-    [ '2519'] = "Vendor-only", -- Heavy Shot
-    [ '3033'] = "Vendor-only", -- Solid Shot
-    ['31735'] = "Vendor-only", -- Timeless Shell
-    [ '2512'] = "Vendor-only", -- Rough Arrow
-    ['28061'] = "Vendor-only", -- Ironbite Shell
-    ['10579'] = "Requires a vendor-only item", -- Explosive Arrow
-    ['28060'] = "Vendor-only", -- Impact Shot
-    ['19316'] = "Vendor-only", -- Ice Threaded Arrow
-    ['19317'] = "Vendor-only", -- Ice Threaded Bullet
-    ['32882'] = "Vendor-only", -- Hellfire Shot
-    [ '2516'] = "Vendor-only", -- Light Shot
-    ['31949'] = "Vendor-only", -- Warden's Arrow
-    ['30611'] = "Vendor-only", -- Halaani Razorshaft
-    ['24412'] = "Vendor-only", -- Warden's Arrow
-    ['30612'] = "Vendor-only", -- Halaani Grimshot
-    ['32761'] = "Vendor-only", -- The Sarge's Bullet
-    ['32883'] = "Vendor-only", -- Felbane Slugs
-    ['24417'] = "Vendor-only", -- Scout's Arrow
-    ['34582'] = "Vendor-only", -- Mysterious Shell
+    ['11285'] = "vendor-only", -- Jagged Arrow
+    [ '3030'] = "vendor-only", -- Razor Arrow
+    ['28056'] = "vendor-only", -- Blackflight Arrow
+    ['31737'] = "vendor-only", -- Timeless Arrow
+    ['28053'] = "vendor-only", -- Wicked Arrow
+    ['41586'] = "vendor-only", -- Terrorshaft Arrow
+    [ '2515'] = "vendor-only", -- Sharp Arrow
+    ['41584'] = "vendor-only", -- Frostbite Bullets
+    ['34581'] = "vendor-only", -- Mysterious Arrow
+    ['11284'] = "vendor-only", -- Accurate Slugs
+    [ '2519'] = "vendor-only", -- Heavy Shot
+    [ '3033'] = "vendor-only", -- Solid Shot
+    ['31735'] = "vendor-only", -- Timeless Shell
+    [ '2512'] = "vendor-only", -- Rough Arrow
+    ['28061'] = "vendor-only", -- Ironbite Shell
+    ['10579'] = "requires a vendor-only item", -- Explosive Arrow
+    ['28060'] = "vendor-only", -- Impact Shot
+    ['19316'] = "vendor-only", -- Ice Threaded Arrow
+    ['19317'] = "vendor-only", -- Ice Threaded Bullet
+    ['32882'] = "vendor-only", -- Hellfire Shot
+    [ '2516'] = "vendor-only", -- Light Shot
+    ['31949'] = "vendor-only", -- Warden's Arrow
+    ['30611'] = "vendor-only", -- Halaani Razorshaft
+    ['24412'] = "vendor-only", -- Warden's Arrow
+    ['30612'] = "vendor-only", -- Halaani Grimshot
+    ['32761'] = "vendor-only", -- The Sarge's Bullet
+    ['32883'] = "vendor-only", -- Felbane Slugs
+    ['24417'] = "vendor-only", -- Scout's Arrow
+    ['34582'] = "vendor-only", -- Mysterious Shell
 }
 
 local gDefaultGoodItems = {
@@ -860,7 +861,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                     local rankRequiredAtThisLevel = playerLevel * 5
                     local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
                     local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
-                    local levelsToFirstSkillCheck = skills.firstCheckLevel - playerLevel
+                    local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
                     if levelsToFirstSkillCheck > 3 then
                         -- Don't check if more than 3 levels away from the first required level.
                     elseif levelsToFirstSkillCheck >= 2 then
@@ -1392,16 +1393,16 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
             if CharSaved.isLucky then
                 if CharSaved.isTrailblazer then
-                    completionFunc(2, t.link, "lucky trailblazer mountaineers can only use this item if it is self-made, looted, or purchased from an open-world vendor")
+                    completionFunc(2, t.link, "lucky trailblazer mountaineers can only use this item if it is self-made, fished, looted, or purchased from an open-world vendor")
                 else
-                    completionFunc(2, t.link, "lucky mountaineers can only use this item if it is self-made or looted")
+                    completionFunc(2, t.link, "lucky mountaineers can only use this item if it is self-made, fished, or looted")
                 end
                 return
             else
                 if CharSaved.isTrailblazer then
-                    completionFunc(2, t.link, "hardtack trailblazer mountaineers can only use this item if it is self-made, looted from a rare mob, or purchased from an open-world vendor")
+                    completionFunc(2, t.link, "hardtack trailblazer mountaineers can only use this item if it is self-made, fished, looted from a container or a rare mob, or purchased from an open-world vendor")
                 else
-                    completionFunc(2, t.link, "hardtack mountaineers can only use this item if it is self-made or looted from a rare mob")
+                    completionFunc(2, t.link, "hardtack mountaineers can only use this item if it is self-made, fished, or looted from a container or a rare mob")
                 end
                 return
             end
@@ -1992,8 +1993,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     elseif event == 'LOOT_READY' then
 
-        --[[
         local lootTable = GetLootInfo()
+        local skipLoot = false
 
         for i = 1, #lootTable do
 
@@ -2008,8 +2009,15 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local item = lootTable[i]
 
             -- Add the first source GUID to the item. (In Era, TBC, Wrath there is only 1 source.)
-            local sources = {GetLootSourceInfo(i)}
-            lootTable[i].source = sources[1]
+            local sourceInfo = {GetLootSourceInfo(i)}
+            if sourceInfo and #sourceInfo > 0 then
+                local guid = sourceInfo[1]
+                if guid == gLastLootSourceGUID then
+                    skipLoot = true
+                else
+                    gLastLootSourceGUID = guid
+                end
+            end
 
             --local icon, name, count, currencyID, quality, isLocked, isQuestItem, questID, startsANewQuest = GetLootSlotInfo(i)
 
@@ -2031,13 +2039,14 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         end
 
-        printInfo("Loot table:")
-        print(ut.tfmt(lootTable))
+        if not skipLoot then
+            printInfo("Loot table (" .. gLastLootSourceGUID .. ")")
+            print(ut.tfmt(lootTable))
+        end
 
         --=--for i = 1, #lootTable do
         --=--    print(ut.tfmt(lootTable[i]))
         --=--end
-        ]]
 
     elseif event == 'LOOT_SLOT_CLEARED' then
 
@@ -2087,7 +2096,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         if guid and guid ~= gPlayerGUID then
             local unitType = strsplit("-", guid)
             -- We only care about Creatures, which are basically NPCs.
-            if unitType == 'Creature' then
+            if unitType == 'Creature' then -- 'Player', GameObject'
                 local _, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", guid)
                 gLastUnitTargeted = unitId
                 --printInfo("Targeting NPC " .. name .. " (" .. unitId .. ")")
@@ -2245,6 +2254,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'CHAT_MSG_LOOT' then
 
         local text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons = ...
+        print("CHAT_MSG_LOOT", text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
 
         -- Do the following after a short delay.
         C_Timer.After(.3, function()
@@ -2256,21 +2266,32 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 local _, _, itemLink = text:find(L['You receive loot'] .. ": (.*)%.")
                 if itemLink ~= nil then
                     matched = true
-                    itemCanBeUsed(itemId, gLastUnitTargeted, nil, nil, function(ok, link, why)
-                        if ok == 0 then
-                            if not link then link = "That item" end
-                            printWarning(link .. " cannot be used (" .. why .. ")")
-                        elseif ok == 1 then
-                            if not link then link = "That item" end
-                            printGood(link .. " can be used (" .. why .. ")")
+                    -- The LOOT_READY event has already fired and set gLastLootSourceGUID.
+                    local unitType, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", gLastLootSourceGUID)
+                    if unitType == 'GameObject' then
+                        -- We don't know 100% for sure, but it's very likely this item is looted from a chest or something similar, so we allow it.
+                        if tonumber(unitId) == 35591 then
+                            printGood(itemLink .. " can be used (via fishing)")
                         else
-                            if link then
-                                printInfo(link .. ": " .. why)
-                            else
-                                printWarning("Unable to look up item - please try again")
-                            end
+                            printGood(itemLink .. " can be used (via container)")
                         end
-                    end)
+                    else
+                        itemCanBeUsed(itemId, gLastUnitTargeted, nil, nil, function(ok, link, why)
+                            if ok == 0 then
+                                if not link then link = "That item" end
+                                printWarning(link .. " cannot be used (" .. why .. ")")
+                            elseif ok == 1 then
+                                if not link then link = "That item" end
+                                printGood(link .. " can be used (" .. why .. ")")
+                            else
+                                if link then
+                                    printInfo(link .. ": " .. why)
+                                else
+                                    printWarning("Unable to look up item - please try again")
+                                end
+                            end
+                        end)
+                    end
                 end
             end
 
