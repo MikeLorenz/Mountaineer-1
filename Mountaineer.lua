@@ -595,6 +595,13 @@ local function dumpBags()
     end
 end
 
+local function dumpSkills()
+    for i = 1, GetNumSkillLines() do
+        local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
+        print(name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc)
+    end
+end
+
 local function whatAmI()
     initSavedVarsIfNec()
     return "You are a"
@@ -791,22 +798,28 @@ local function mountaineersCanUseNonLootedItem(itemId)
     return false
 end
 
--- Checks skills. Returns (warningCount, challengeIsOver).
--- There are 2 kinds of warnings. (1) WARNINGS that will end your run if you don't correct
--- the situation before your next ding. (2) REMINDERS that appear before level 9 reminding
--- you to skill up before you ding 10.
-local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
+-- Checks skills. Returns 4 arrays of strings: fatals, warnings, reminders, exceptions.
+-- Fatals are messages that the run is invalidated.
+-- Warnings are messages that the run will be invalidated on the next ding.
+-- Reminders are warnings that are 2+ levels away, so a ding is still OK.
+-- Exceptions are unexpected error messages.
+local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
+
+    local fatals, warnings, reminders, exceptions = {}, {}, {}, {}
+
     -- These are the only skills we care about.
     local skills = {
-        ['unarmed']   = { rank = 0, name = 'Unarmed' },
-        ['first aid'] = { rank = 0, name = 'First Aid' },
-        ['fishing']   = { rank = 0, name = 'Fishing' },
-        ['cooking']   = { rank = 0, name = 'Cooking' },
+        ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = 'Unarmed' },
+        ['first aid'] = { rank = 0, firstCheckLevel = 10, name = 'First Aid' },
+        ['fishing']   = { rank = 0, firstCheckLevel = 10, name = 'Fishing' },
+        ['cooking']   = { rank = 0, firstCheckLevel = 10, name = 'Cooking' },
     }
 
+    local playerLevel = UnitLevel('player');
+
     -- Gather data on the above skills.
-    for skillIndex = 1, GetNumSkillLines() do
-        local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(skillIndex)
+    for i = 1, GetNumSkillLines() do
+        local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(i)
         if not isHeader then
             local name = skillName:lower()
             if skills[name] ~= nil then
@@ -815,86 +828,111 @@ local function checkSkills(playerLevel, hideMessageIfAllIsWell, hideWarnings)
         end
     end
 
-    local warningCount = 0
-    local challengeIsOver = false
+    if skills['unarmed'].rank == 0 then
 
-    -- Check the skill ranks against the expected rank.
-    for _, skill in pairs(skills) do
-        if skill.rank == 0 then
-            -- The player has not yet trained this skill.
-            if playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 3 then
-                -- This is a REMINDER, not a WARNING, so we don't increment warningCount.
-                if not hideWarnings then
-                    printWarning("You must train " .. skill.name .. " and level it to " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
-                    flashWarning("You must train " .. skill.name)
+        table.insert(exceptions, "Cannot find your unarmed skill - please go into your skill window and expand the \"Weapon Skills\" section")
+
+    else
+
+        -- Check the skill ranks against the expected rank.
+        for key, skill in pairs(skills) do
+
+            if skill.rank == 0 then
+
+                -- The player has not yet trained this skill.
+                if playerLevel >= skill.firstCheckLevel - 3 then
+                    local rank = skill.firstCheckLevel * 5
+                    table.insert(reminders, "You must train " .. skill.name .. " and level it to " .. rank .. " before you ding " .. skill.firstCheckLevel)
                 end
-            end
-        else
-            -- The player has trained this skill.
-            if skill.name == "Unarmed" then
-                local rankRequiredAtThisLevel = playerLevel * 5 - 15
-                local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
-                if skill.rank < rankRequiredAtThisLevel then
-                    warningCount = warningCount + 1
-                    if not hideWarnings then
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. rankRequiredAtThisLevel .. ".")
-                        printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                        flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                        playSound(ERROR_SOUND_FILE)
-                    end
-                    challengeIsOver = true
-                elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
-                    -- Warn if dinging will invalidate the run.
-                    warningCount = warningCount + 1
-                    if not hideWarnings then
-                        printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
-                    end
-                end
+
             else
-                local rankRequiredAtThisLevel = playerLevel * 5
-                local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
-                local levelsToFirstSkillCheck = FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - playerLevel
-                --print(" skill.name=", skill.name, " skill.rank=", skill.rank, " rankRequiredAtThisLevel=", rankRequiredAtThisLevel, " rankRequiredAtNextLevel=", rankRequiredAtNextLevel)
-                if levelsToFirstSkillCheck > 3 then
-                    -- Don't check if more than 3 levels away from the first required level.
-                elseif levelsToFirstSkillCheck >= 2 then
-                    -- The first skill check level is 2 or more levels away, so the player doesn't necessarily need to correct any warnings at this level.
-                    if skill.rank < FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK then
-                        -- The player has trained it, but the skill level is insufficient so far.
-                        -- This is a REMINDER, not a WARNING, so we don't increment warningCount.
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK .. " before you ding " .. FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL)
-                        end
+
+                -- The player has trained this skill.
+                if key == 'unarmed' then
+                    local rankRequiredAtThisLevel = playerLevel * 5 - 15
+                    local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+                    if skill.rank < rankRequiredAtThisLevel then
+                        table.insert(fatals, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel)
+                    elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
+                        table.insert(warnings, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
                     end
                 else
-                    -- The player is either 1 level away from the first required level, or (more likely) they are past it.
-                    if skill.rank < rankRequiredAtThisLevel and playerLevel >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL then
-                        -- At this level the player must be at least the minimum rank.
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ". The minimum requirement at this level is " .. rankRequiredAtThisLevel .. ".")
-                            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                            playSound(ERROR_SOUND_FILE)
+                    local rankRequiredAtThisLevel = playerLevel * 5
+                    local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+                    local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
+                    local levelsToFirstSkillCheck = skills.firstCheckLevel - playerLevel
+                    if levelsToFirstSkillCheck > 3 then
+                        -- Don't check if more than 3 levels away from the first required level.
+                    elseif levelsToFirstSkillCheck >= 2 then
+                        -- The first skill check level is 2 or more levels away, so the player doesn't necessarily need to correct any warnings at this level.
+                        if skill.rank < rankRequiredAtFirstCheckLevel then
+                            table.insert(reminders, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel)
                         end
-                        challengeIsOver = true
-                    elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
-                        -- Warn if dinging will invalidate the run.
-                        warningCount = warningCount + 1
-                        if not hideWarnings then
-                            printWarning("Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                    else
+                        -- The player is either 1 level away from the first required level, or (more likely) they are past it.
+                        if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
+                            -- At this level the player must be at least the minimum rank.
+                            table.insert(fatals, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel)
+                        elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
+                            table.insert(warnings, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
                         end
+                    end
+                end
+
+            end
+
+        end -- for
+
+    end
+
+    return fatals, warnings, reminders, exceptions
+
+end
+
+-- Checks skills. Returns (warningCount, challengeIsOver).
+-- The warning count is the number of skills that are low enough to either have
+-- already invalidated the run, or *will* invalidate it when the player dings.
+local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
+
+    local fatals, warnings, reminders, exceptions = getSkillCheckMessages()
+
+    local warningCount = #fatals + #warnings
+    local challengeIsOver = #fatals > 0
+
+    if #exceptions > 0 then
+        for i = 1, #exceptions do
+            printWarning(exceptions[i])
+        end
+    else
+        if not hideWarnings then
+            if #fatals > 0 then
+                for i = 1, #fatals do
+                    printWarning(fatals[i])
+                end
+                printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                playSound(ERROR_SOUND_FILE)
+            else
+                if #warnings > 0 then
+                    for i = 1, #warnings do
+                        printWarning(warnings[i])
+                    end
+                end
+                if #reminders > 0 then
+                    for i = 1, #reminders do
+                        printWarning(reminders[i])
                     end
                 end
             end
         end
     end
 
-    if warningCount == 0 and not hideMessageIfAllIsWell then
+    if #fatals == 0 and #warnings == 0 and #reminders == 0 and not hideMessageIfAllIsWell then
         printGood("All skills are up to date")
     end
 
     return warningCount, challengeIsOver
+
 end
 
 --[[
@@ -1032,7 +1070,7 @@ local function itemIsADrink(t)
 end
 
 -- Returns true if the item can be used for a profession, and is therefore allowed to be purchased, looted, or accepted as a quest reward.
-local function itemIsUsableForAProfession(t)
+local function itemIsReagentOrUsableForAProfession(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
@@ -1040,10 +1078,11 @@ local function itemIsUsableForAProfession(t)
         return true
     end
 
-    if t.classId == Enum.ItemClass.Reagent
-    or t.classId == Enum.ItemClass.Tradegoods
-    or t.classId == Enum.ItemClass.ItemEnhancement
-    or t.classId == Enum.ItemClass.Recipe
+    if (t.classId == Enum.ItemClass.Reagent)
+    or (t.classId == Enum.ItemClass.Tradegoods)
+    or (t.classId == Enum.ItemClass.ItemEnhancement)
+    or (t.classId == Enum.ItemClass.Recipe)
+    or (t.classId == Enum.ItemClass.Miscellaneous and t.subclassId == Enum.ItemMiscellaneousSubclass.Reagent)
     then
         return true
     end
@@ -1274,13 +1313,13 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
 
             -- We don't know where the item came from.
 
-            if itemIsUsableForAProfession(t) then
-                completionFunc(1, t.link, "Reagents & items usable by a profession can be purchased, looted, or accepted as quest rewards")
+            if itemIsReagentOrUsableForAProfession(t) then
+                completionFunc(1, t.link, "Reagents & items usable by a profession are always approved")
                 return
             end
 
             if itemIsADrink(t) then
-                completionFunc(1, t.link, "Drinks can be purchased, looted, or accepted as quest rewards")
+                completionFunc(1, t.link, "Drinks are always approved")
                 return
             end
 
@@ -1339,7 +1378,7 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
 
             -- We know where the item came from.
 
-            if itemIsUsableForAProfession(t) then
+            if itemIsReagentOrUsableForAProfession(t) then
                 completionFunc(1, t.link, "Reagent / profession item")
                 return
             end
@@ -1584,7 +1623,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^check$")
     if p1 then
         local level = UnitLevel('player');
-        local warningCount = checkSkills(level)
+        local warningCount = checkSkills()
         gSkillsAreUpToDate = (warningCount == 0)
         checkEquippedItems()
         return
@@ -1678,6 +1717,12 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^db$")
     if p1 then
         dumpBags()
+        return
+    end
+
+    p1, p2 = str:find("^ds$")
+    if p1 then
+        dumpSkills()
         return
     end
 
@@ -1876,7 +1921,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Do the following after a short delay.
             C_Timer.After(1, function()
 
-                local warningCount = checkSkills(level)
+                local warningCount = checkSkills()
                 gSkillsAreUpToDate = (warningCount == 0)
                 checkEquippedItems()
 
@@ -2022,7 +2067,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         C_Timer.After(1, function()
 
             --print(" level=", level, " hp=", hp, " mana=", mana, " tp=", tp, " str=", str, " agi=", agi, " sta=", sta, " int=", int, " spi=", spi)
-            local warningCount = checkSkills(level)
+            local warningCount = checkSkills()
             gSkillsAreUpToDate = (warningCount == 0)
 
         end)
@@ -2036,11 +2081,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local xpMax = UnitXPMax('player')
             local level = UnitLevel('player');
 
-            if level >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 2 and xp > getXPFromLastGain() then
+            local fatals, warnings, reminders, exceptions = getSkillCheckMessages()
 
-                local percentList = (level < FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 1)
-                    and {33, 66}
-                    or  {25, 50, 75, 85, 95}
+            if #fatals > 0 or #warnings > 0 or #reminders > 0 then
+
+                local percentList = (#fatals > 0 or #warnings > 0)
+                    and { 20, 35, 50, 60, 70, 80, 85, 90, 95 }
+                    or  { 25, 50, 75 }
 
                 local percent1 = getXPFromLastGain() * 100 / xpMax
                 local percent2 = xp * 100 / xpMax
@@ -2049,13 +2096,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 if percent1 < percent2 then
                     for _, p in ipairs(percentList) do
                         if percent1 < p and percent2 >= p then
-                            local warningCount = checkSkills(level, true)
-                            if warningCount > 0 -- there's a potential problem, so maybe play the error sound
-                            and p >= 50 -- only play the sound if player xp is past the halfway point for the level
-                            and level >= FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL - 1 -- don't play the sound if level N is the first level check and we're still at level N-2
+                            if ( #fatals > 0 )
+                            or ( #warnings > 0 -- there's a potential problem, so maybe play the error sound
+                                 and p >= 50 ) -- only play the sound if player xp is past the halfway point for the level
                             then
                                 playSound(ERROR_SOUND_FILE)
                             end
+                            checkSkills()
                             break
                         end
                     end
@@ -2179,12 +2226,12 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                     skill = skill:lower()
                     if skill == 'unarmed' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
                         if not gSkillsAreUpToDate then
-                            local warningCount = checkSkills(level, true, true)
+                            local warningCount = checkSkills(true, true)
                             if warningCount == 0 then
                                 -- If we're here, the player just transitioned to all skills being up to date.
                                 gSkillsAreUpToDate = true
                                 -- Repeat the check so the all-is-well message is displayed.
-                                checkSkills(level)
+                                checkSkills()
                                 -- Congratulate them with the "WORK COMPLETE" sound.
                                 PlaySoundFile(558132)
                             end
