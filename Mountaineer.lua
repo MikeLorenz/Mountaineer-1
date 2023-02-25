@@ -11,13 +11,6 @@ http://tinyurl.com/hc-mountaineers
 
 local ADDON_VERSION = '2.0.5' -- This should be the same as in the 'Mountaineer.toc' file.
 
--- The first player level where the run could end if their first aid, fishing,
--- cooking skills aren't up to the minimum requirement.
-local FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL = 10
-
--- The skill rank required at the above player level.
-local FIRST_REQUIRED_SKILL_CHECK_SKILL_RANK = FIRST_REQUIRED_SKILL_CHECK_PLAYER_LEVEL * 5
-
 local CLASS_WARRIOR = 1
 local CLASS_PALADIN = 2
 local CLASS_HUNTER = 3
@@ -864,7 +857,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                     if levelsToFirstSkillCheck > 3 then
                         -- Don't check if more than 3 levels away from the first required level.
                     elseif levelsToFirstSkillCheck >= 2 then
-                        -- The first skill check level is 2 or more levels away, so the player doesn't necessarily need to correct any warnings at this level.
+                        -- The first skill check level is 2 or more levels away. Give them a gentle reminder.
                         if skill.rank < rankRequiredAtFirstCheckLevel then
                             table.insert(reminders, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel)
                         end
@@ -1932,26 +1925,26 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'QUEST_DETAIL' or event == 'QUEST_PROGRESS' or event == 'QUEST_COMPLETE' then
 
         gQuestInteraction = true
-        printInfo("Quest interaction begun with " .. tostring(gPlayerTargetUnitId))
+        --=--printInfo("Quest interaction begun with " .. tostring(gPlayerTargetUnitId))
 
     elseif event == 'QUEST_FINISHED' then
 
         gQuestInteraction = false
-        printInfo("Quest interaction ended")
+        --=--printInfo("Quest interaction ended")
 
     elseif event == 'MERCHANT_SHOW' then
 
         gMerchantInteraction = true
-        printInfo("Merchant interaction begun with " .. tostring(gPlayerTargetUnitId))
+        --=--printInfo("Merchant interaction begun with " .. tostring(gPlayerTargetUnitId))
 
     elseif event == 'MERCHANT_CLOSED' then
 
         gMerchantInteraction = false
-        printInfo("Merchant interaction ended")
+        --=--printInfo("Merchant interaction ended")
 
     elseif event == 'LOOT_READY' then
 
-        printInfo("Loot table:")
+        --=--printInfo("Loot table:")
         local nLootItems = GetNumLootItems()
         local lootTable = GetLootInfo()
         for i = 1, #lootTable do
@@ -1960,9 +1953,9 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Add the first source GUID to the loot table item. (In Era, TBC, Wrath there is only 1 source.)
             lootTable[i].source = sources[1]
         end
-        for i = 1, #lootTable do
-            print(tfmt(lootTable[i]))
-        end
+        --=--for i = 1, #lootTable do
+        --=--    print(tfmt(lootTable[i]))
+        --=--end
 
     elseif event == 'LOOT_SLOT_CLEARED' then
 
@@ -1970,13 +1963,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         -- In case the item being looted is a chest or other item that was opened, we turn off this flag.
         gPlayerOpening = 0
-        printGood("Closed it")
+        --=--printGood("Closed it")
 
     elseif event == 'ITEM_PUSH' then
 
         local bag, texturePushed = ...
         if bag >= 0 then
-            printInfo("Item added to bag " .. bag .. " (" .. texturePushed .. ")")
+            --=--printInfo("Item added to bag " .. bag .. " (" .. texturePushed .. ")")
             -- Do the following after a short delay.
             C_Timer.After(.3, function()
                 local nSlots = getContainerNumSlots(bag)
@@ -2276,7 +2269,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'UNIT_SPELLCAST_STOP' or event == 'UNIT_SPELLCAST_INTERRUPTED' then
 
         gPlayerOpening = 0
-        printGood("Closed it")
+        --=--printGood("Closed it")
 
     elseif event == 'GET_ITEM_INFO_RECEIVED' then
 
