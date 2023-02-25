@@ -9,20 +9,7 @@ http://tinyurl.com/hc-mountaineers
 ================================================================================
 ]]
 
-local ADDON_VERSION = '2.0.5' -- This should be the same as in the 'Mountaineer.toc' file.
-
-local CLASS_WARRIOR = 1
-local CLASS_PALADIN = 2
-local CLASS_HUNTER = 3
-local CLASS_ROGUE = 4
-local CLASS_PRIEST = 5
-local CLASS_DEATHKNIGHT = 6
-local CLASS_SHAMAN = 7
-local CLASS_MAGE = 8
-local CLASS_WARLOCK = 9
-local CLASS_MONK = 10
-local CLASS_DRUID = 11
-local CLASS_DEMONHUNTER = 12
+local ADDON_VERSION = '2.0.5' -- This should be the same as in the .toc file.
 
 local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
 
@@ -31,7 +18,7 @@ local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
 
 local gPlayerOpening = 0            -- 1=opening, 2=opened -- This is set when UNIT_SPELLCAST_SUCCEEDED fires on spell 3365 (Opening); set to 0 on LOOT_CLOSED
 local gPlayerGUID = ''
-local gPlayerTargetUnitId = nil
+local gLastUnitTargeted = nil
 local gQuestInteraction = false
 local gMerchantInteraction = false
 
@@ -75,14 +62,12 @@ local gNewDefaultBadItems = {
     ['31737'] = "Vendor-only", -- Timeless Arrow
     ['28053'] = "Vendor-only", -- Wicked Arrow
     ['41586'] = "Vendor-only", -- Terrorshaft Arrow
-    [ '3464'] = "Approved", -- Feathered Arrow
     [ '2515'] = "Vendor-only", -- Sharp Arrow
     ['41584'] = "Vendor-only", -- Frostbite Bullets
     ['34581'] = "Vendor-only", -- Mysterious Arrow
     ['11284'] = "Vendor-only", -- Accurate Slugs
     [ '2519'] = "Vendor-only", -- Heavy Shot
     [ '3033'] = "Vendor-only", -- Solid Shot
-    [ '3465'] = "Approved", -- Exploding Shot
     ['31735'] = "Vendor-only", -- Timeless Shell
     [ '2512'] = "Vendor-only", -- Rough Arrow
     ['28061'] = "Vendor-only", -- Ironbite Shell
@@ -300,7 +285,9 @@ Lua utility functions that are independent of WoW
 ================================================================================
 ]]
 
-function tfmt(tbl, indent)
+local ut = {}
+
+function ut.tfmt(tbl, indent)
 
     if type(tbl) ~= 'table' then
         return 'argument is a ' .. type(tbl) .. ', not a table'
@@ -364,7 +351,7 @@ function tfmt(tbl, indent)
             elseif (type(v) == 'string') then
                 s = s .. '"' .. v .. '",\r\n'
             elseif (type(v) == 'table') then
-                s = s .. tfmt(v, indent + 4) .. ',\r\n'
+                s = s .. ut.tfmt(v, indent + 4) .. ',\r\n'
             else
                 s = s .. '"' .. tostring(v) .. '",\r\n'
             end
@@ -414,6 +401,19 @@ WoW utility functions & vars that could be used by any WoW addon
 
 local PRINT_PREFIX = "MOUNTAINEER: "
 local GAME_VERSION = nil -- 1 = Classic Era or SoM, 2 = TBC, 3 = WotLK
+
+local CLASS_WARRIOR = 1
+local CLASS_PALADIN = 2
+local CLASS_HUNTER = 3
+local CLASS_ROGUE = 4
+local CLASS_PRIEST = 5
+local CLASS_DEATHKNIGHT = 6
+local CLASS_SHAMAN = 7
+local CLASS_MAGE = 8
+local CLASS_WARLOCK = 9
+local CLASS_MONK = 10
+local CLASS_DRUID = 11
+local CLASS_DEMONHUNTER = 12
 
 local function gameVersion()
     if GAME_VERSION ~= nil then return GAME_VERSION end
@@ -466,11 +466,11 @@ local function flashGood(text)
 end
 
 local function getContainerNumSlots(bag)
-    return gameVersion() < 3 and GetContainerNumSlots(bag) or C_Container.GetContainerNumSlots(bag)
+    if gameVersion() < 3 then return GetContainerNumSlots(bag) else return C_Container.GetContainerNumSlots(bag) end
 end
 
 local function getContainerItemInfo(bag, slot)
-    return gameVersion() < 3 and GetContainerItemInfo(bag, slot) or C_Container.GetContainerItemInfo(bag, slot)
+    if gameVersion() < 3 then return GetContainerItemInfo(bag, slot) else return C_Container.GetContainerItemInfo(bag, slot) end
 end
 
 local function parseItemLink(link)
@@ -486,6 +486,13 @@ Local vars and functions for this addon
 
 ================================================================================
 ]]
+
+-- These will need to be localized if not enUS.
+local L = {
+    ["You receive loot"] = "You receive loot",
+    ["You receive item"] = "You receive item",
+    ["You create"] = "You create",
+}
 
 local functionQueue = Queue.new()
 
@@ -683,24 +690,24 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
     initSavedVarsIfNec()
     if allow == nil then
         -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
-        AcctSaved.badItems[id .. ''] = nil
-        if not gDefaultGoodItems[id .. ''] then
-            AcctSaved.goodItems[id .. ''] = nil
+        AcctSaved.badItems[id] = nil
+        if not gDefaultGoodItems[id] then
+            AcctSaved.goodItems[id] = nil
         end
         if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
     elseif allow then
         -- If the user is manually overriding an item to be good, put it on the good list.
-        if userOverride then AcctSaved.goodItems[id .. ''] = true end
-        AcctSaved.badItems[id .. ''] = nil
+        if userOverride then AcctSaved.goodItems[id] = true end
+        AcctSaved.badItems[id] = nil
         if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
     else
         -- If the user is manually overriding an item to be bad, remove it from the good list.
-        if gDefaultGoodItems[id .. ''] then
+        if gDefaultGoodItems[id] then
             if userOverride then printInfo(link .. ' (' .. id .. ') is always allowed & cannot be disallowed') end
             return false
         end
-        if userOverride then AcctSaved.goodItems[id .. ''] = nil end
-        AcctSaved.badItems[id .. ''] = true
+        if userOverride then AcctSaved.goodItems[id] = nil end
+        AcctSaved.badItems[id] = true
         if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
     end
     return true
@@ -823,7 +830,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
 
     if skills['unarmed'].rank == 0 then
 
-        table.insert(exceptions, "Cannot find your unarmed skill - please go into your skill window and expand the \"Weapon Skills\" section")
+        exceptions[#exceptions+1] = "Cannot find your unarmed skill - please go into your skill window and expand the \"Weapon Skills\" section"
 
     else
 
@@ -835,7 +842,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                 -- The player has not yet trained this skill.
                 if playerLevel >= skill.firstCheckLevel - 3 then
                     local rank = skill.firstCheckLevel * 5
-                    table.insert(reminders, "You must train " .. skill.name .. " and level it to " .. rank .. " before you ding " .. skill.firstCheckLevel)
+                    reminders[#reminders+1] = "You must train " .. skill.name .. " and level it to " .. rank .. " before you ding " .. skill.firstCheckLevel
                 end
 
             else
@@ -845,9 +852,9 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                     local rankRequiredAtThisLevel = playerLevel * 5 - 15
                     local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
                     if skill.rank < rankRequiredAtThisLevel then
-                        table.insert(fatals, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel)
+                        fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
                     elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
-                        table.insert(warnings, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                        warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1)
                     end
                 else
                     local rankRequiredAtThisLevel = playerLevel * 5
@@ -859,15 +866,15 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                     elseif levelsToFirstSkillCheck >= 2 then
                         -- The first skill check level is 2 or more levels away. Give them a gentle reminder.
                         if skill.rank < rankRequiredAtFirstCheckLevel then
-                            table.insert(reminders, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel)
+                            reminders[#reminders+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel
                         end
                     else
                         -- The player is either 1 level away from the first required level, or (more likely) they are past it.
                         if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
                             -- At this level the player must be at least the minimum rank.
-                            table.insert(fatals, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel)
+                            fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
                         elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
-                            table.insert(warnings, "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1))
+                            warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1)
                         end
                     end
                 end
@@ -875,6 +882,16 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
             end
 
         end -- for
+
+        if not CharSaved.madeWeapon then
+            if playerLevel >= 10 then
+                fatals[#fatals+1] = "You did not make your self-crafted weapon before reaching level 10."
+            elseif playerLevel == 9 then
+                warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
+            elseif playerLevel >= 6 then
+                reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
+            end
+        end
 
     end
 
@@ -984,11 +1001,19 @@ local function itemIsUncraftable(t)
 
 end
 
+local function itemIsAQuestItem(t)
+
+    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+
+    return (t.classId == 12)
+
+end
+
 local function itemIsFoodOrDrink(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    return (t.classId == 0 and t.subclassId == 5) -- class 0 = consumable, subclass 5 = fooddrink
+    return (t.classId == 0 and t.subclassId == 5)
 
 end
 
@@ -1081,6 +1106,15 @@ local function itemIsReagentOrUsableForAProfession(t)
     end
 
     return false
+
+end
+
+-- Returns true if the item is a normal bag.
+local function itemIsANormalBag(t)
+
+    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+
+    return (t.classId == Enum.ItemClass.Container and subclassId == 0) -- Container subclass of 0 means it's a standard bag.
 
 end
 
@@ -1237,9 +1271,9 @@ The function returns 3 values:
 ================================================================================
 ]]
 
-local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewardedByUnitId, completionFunc)
+local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchasedFromUnitId, completionFunc)
 
-    itemId = itemId .. ''
+    itemId = itemId or ''
     if itemId == '' or itemId == '0' then
         completionFunc(false, "", "no item id")
         return
@@ -1270,7 +1304,7 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
         local t = {}
         t.itemId = itemId
         t.name, t.link, t.rarity, t.level, t.minLevel, t.type, t.subType, t.stackCount, t.equipLoc, t.texture, t.sellPrice, t.classId, t.subclassId, t.bindType, t.expacId, t.setId, t.isCraftingReagent = GetItemInfo(itemId)
-        print("HI THERE: " .. tfmt(t))
+        --=--print("HI THERE: " .. ut.tfmt(t))
 
         --local itemInfo = {itemId, GetItemInfo(itemId)}
         --local id, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = unpack(itemInfo)
@@ -1283,7 +1317,7 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
 
         -- If the item is already on the allowed list, we don't need to use any logic.
         --if AcctSaved.goodItems[itemId] then
-        --    completionFunc(true, t.link, "on your approved list")
+        --    completionFunc(true, t.link, "on your allowed list")
         --    return
         --end
 
@@ -1307,62 +1341,67 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
             -- We don't know where the item came from.
 
             if itemIsReagentOrUsableForAProfession(t) then
-                completionFunc(1, t.link, "Reagents & items usable by a profession are always approved")
+                completionFunc(1, t.link, "reagents & items usable by a profession are always allowed")
                 return
             end
 
             if itemIsADrink(t) then
-                completionFunc(1, t.link, "Drinks are always approved")
+                completionFunc(1, t.link, "drinks are always allowed")
+                return
+            end
+
+            if itemIsAQuestItem(t) then
+                completionFunc(1, t.link, "quest items are always allowed")
                 return
             end
 
             if itemIsFoodOrDrink(t) then
-                completionFunc(2, t.link, "Food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed")
+                completionFunc(2, t.link, "food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed")
                 return
             end
 
             if itemIsUncraftable(t) then
-                completionFunc(2, t.link, "Uncraftable items can be looted or accepted as quest rewards, but cannot be purchased")
+                completionFunc(2, t.link, "uncraftable items can be looted or accepted as quest rewards, but cannot be purchased")
                 return
             end
 
             if itemIsRare(t) then
-                completionFunc(2, t.link, "Rare items can be looted, but cannot be purchased or accepted as quest rewards")
+                completionFunc(2, t.link, "rare items can be looted, but cannot be purchased or accepted as quest rewards")
                 return
             end
 
             if itemIsGray(t) == 0 then
                 -- Grey items are always looted. You can't buy them or get them as quest rewards.
                 if CharSaved.isLucky then
-                    completionFunc(1, t.link, "Lucky mountaineers can use any looted gray quality items")
+                    completionFunc(1, t.link, "lucky mountaineers can use any looted gray quality items")
                 else
-                    completionFunc(0, t.link, "Hardtack mountaineers cannot use looted gray quality items")
+                    completionFunc(0, t.link, "hardtack mountaineers cannot use looted gray quality items")
                 end
                 return
             end
 
             if itemIsASpecialContainer(t) then
-                completionFunc(2, t.link, "Special containers can be accepted as quest rewards, but cannot be purchased or looted")
+                completionFunc(2, t.link, "special containers can be accepted as quest rewards, but cannot be purchased or looted")
                 return
             end
 
             if itemIsFromClassQuest(t) then
-                completionFunc(2, t.link, "Class quest rewards can be accepted")
+                completionFunc(2, t.link, "class quest rewards can be accepted")
                 return
             end
 
             if CharSaved.isLucky then
                 if CharSaved.isTrailblazer then
-                    completionFunc(2, t.link, "Lucky trailblazer mountaineers can only use this item if it is self-made, looted, or purchased from an open-world vendor")
+                    completionFunc(2, t.link, "lucky trailblazer mountaineers can only use this item if it is self-made, looted, or purchased from an open-world vendor")
                 else
-                    completionFunc(2, t.link, "Lucky mountaineers can only use this item if it is self-made or looted")
+                    completionFunc(2, t.link, "lucky mountaineers can only use this item if it is self-made or looted")
                 end
                 return
             else
                 if CharSaved.isTrailblazer then
-                    completionFunc(2, t.link, "Hardtack trailblazer mountaineers can only use this item if it is self-made, looted from a rare mob, or purchased from an open-world vendor")
+                    completionFunc(2, t.link, "hardtack trailblazer mountaineers can only use this item if it is self-made, looted from a rare mob, or purchased from an open-world vendor")
                 else
-                    completionFunc(2, t.link, "Hardtack mountaineers can only use this item if it is self-made or looted from a rare mob")
+                    completionFunc(2, t.link, "hardtack mountaineers can only use this item if it is self-made or looted from a rare mob")
                 end
                 return
             end
@@ -1372,23 +1411,28 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
             -- We know where the item came from.
 
             if itemIsReagentOrUsableForAProfession(t) then
-                completionFunc(1, t.link, "Reagent / profession item")
+                completionFunc(1, t.link, "reagent / profession item")
                 return
             end
 
             if itemIsADrink(t) then
-                completionFunc(1, t.link, "Drink")
+                completionFunc(1, t.link, "drink")
+                return
+            end
+
+            if itemIsAQuestItem(t) then
+                completionFunc(1, t.link, "quest item")
                 return
             end
 
             if isPurchased then
 
                 if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
-                    completionFunc(1, t.link, "Trailblazer approved vendor")
+                    completionFunc(1, t.link, "trailblazer approved vendor")
                     return
                 end
 
-                completionFunc(0, t.link, "Vendor")
+                completionFunc(0, t.link, "vendor")
                 return
 
             end
@@ -1398,12 +1442,12 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
             if isLooted or isRewarded then
 
                 if itemIsFoodOrDrink(t) then
-                    completionFunc(1, t.link, "Food")
+                    completionFunc(1, t.link, "food")
                     return
                 end
 
                 if itemIsUncraftable(t) then
-                    completionFunc(1, t.link, "Uncraftable item")
+                    completionFunc(1, t.link, "uncraftable item")
                     return
                 end
 
@@ -1412,21 +1456,25 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
             if isLooted then
 
                 if CharSaved.isLucky then
-                    completionFunc(1, t.link, "Looted")
+                    if itemIsANormalBag(t) then
+                        completionFunc(1, t.link, "THE BLESSED RUN!")
+                        return
+                    end
+                    completionFunc(1, t.link, "looted")
                     return
                 end
 
                 if itemIsRare(t) then
-                    completionFunc(1, t.link, "Rare item")
+                    completionFunc(1, t.link, "rare item")
                     return
                 end
 
                 if unitIsRare(lootedFromUnitId) then
-                    completionFunc(1, t.link, "Looted from rare mob")
+                    completionFunc(1, t.link, "looted from rare mob")
                     return
                 end
 
-                completionFunc(0, t.link, "Looted")
+                completionFunc(0, t.link, "looted")
                 return
 
             end
@@ -1434,21 +1482,21 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, purchasedFromUnitId, rewa
             if isRewarded then
 
                 if itemIsASpecialContainer(t) then
-                    completionFunc(1, t.link, "Special container")
+                    completionFunc(1, t.link, "special container")
                     return
                 end
 
                 if itemIsFromClassQuest(t) then
-                    completionFunc(1, t.link, "Class quest reward")
+                    completionFunc(1, t.link, "class quest reward")
                     return
                 end
 
-                completionFunc(0, t.link, "Quest reward")
+                completionFunc(0, t.link, "quest reward")
                 return
 
             end
 
-            completionFunc(0, t.link, "Failed all tests")
+            completionFunc(0, t.link, "failed all tests")
             return
 
         end
@@ -1598,10 +1646,10 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         itemCanBeUsed(arg1, nil, nil, nil, function(ok, link, why)
             if ok == 0 then
                 if not link then link = "That item" end
-                printWarning(link .. " cannot be used: " .. why)
+                printWarning(link .. " cannot be used (" .. why .. ")")
             elseif ok == 1 then
                 if not link then link = "That item" end
-                printGood(link .. " can be used: " .. why)
+                printGood(link .. " can be used (" .. why .. ")")
             else
                 if link then
                     printInfo(link .. ": " .. why)
@@ -1816,6 +1864,9 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         initSavedVarsIfNec()
 
+        local level = UnitLevel('player')
+        local xp = UnitXP('player')
+
         gPlayerGUID = UnitGUID('player')
 
         printInfo("Loaded - type /mtn to access options and features")
@@ -1840,7 +1891,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         -- Let the user know what mode they're playing in.
 
         printInfo(whatAmI())
-        if not CharSaved.madeWeapon then
+        if level >= 6 and not CharSaved.madeWeapon then
             printWarning("You have not yet made your self-crafted weapon. You need to do that before reaching level 10.")
             printSpellsICanAndCannotUse()
         end
@@ -1872,9 +1923,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             AcctSaved.goodItems[k] = v
             AcctSaved.badItems[k] = nil
         end
-
-        local level = UnitLevel('player')
-        local xp = UnitXP('player')
 
         -- If the character is just starting out
         if level == 1 and xp < 200 then
@@ -1925,7 +1973,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'QUEST_DETAIL' or event == 'QUEST_PROGRESS' or event == 'QUEST_COMPLETE' then
 
         gQuestInteraction = true
-        --=--printInfo("Quest interaction begun with " .. tostring(gPlayerTargetUnitId))
+        --=--printInfo("Quest interaction begun with " .. tostring(gLastUnitTargeted))
 
     elseif event == 'QUEST_FINISHED' then
 
@@ -1935,7 +1983,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'MERCHANT_SHOW' then
 
         gMerchantInteraction = true
-        --=--printInfo("Merchant interaction begun with " .. tostring(gPlayerTargetUnitId))
+        --=--printInfo("Merchant interaction begun with " .. tostring(gLastUnitTargeted))
 
     elseif event == 'MERCHANT_CLOSED' then
 
@@ -1944,18 +1992,52 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     elseif event == 'LOOT_READY' then
 
-        --=--printInfo("Loot table:")
-        local nLootItems = GetNumLootItems()
+        --[[
         local lootTable = GetLootInfo()
+
         for i = 1, #lootTable do
+
+            -- Each item in lootTable is a table with these keys:
+            --      isQuestItem boolean?
+            --      item        string
+            --      locked      boolean
+            --      quality     number
+            --      quantity    number
+            --      roll        boolean
+            --      texture     number
+            local item = lootTable[i]
+
+            -- Add the first source GUID to the item. (In Era, TBC, Wrath there is only 1 source.)
             local sources = {GetLootSourceInfo(i)}
-            local _, name = GetLootSlotInfo(i)
-            -- Add the first source GUID to the loot table item. (In Era, TBC, Wrath there is only 1 source.)
             lootTable[i].source = sources[1]
+
+            --local icon, name, count, currencyID, quality, isLocked, isQuestItem, questID, startsANewQuest = GetLootSlotInfo(i)
+
+            --itemCanBeUsed(arg1, unitId, nil, nil, function(ok, link, why)
+            --    if ok == 0 then
+            --        if not link then link = "That item" end
+            --        printWarning(link .. " cannot be used: " .. why)
+            --    elseif ok == 1 then
+            --        if not link then link = "That item" end
+            --        printGood(link .. " can be used: " .. why)
+            --    else
+            --        if link then
+            --            printInfo(link .. ": " .. why)
+            --        else
+            --            printWarning("Unable to look up item - please try again")
+            --        end
+            --    end
+            --end)
+
         end
+
+        printInfo("Loot table:")
+        print(ut.tfmt(lootTable))
+
         --=--for i = 1, #lootTable do
-        --=--    print(tfmt(lootTable[i]))
+        --=--    print(ut.tfmt(lootTable[i]))
         --=--end
+        ]]
 
     elseif event == 'LOOT_SLOT_CLEARED' then
 
@@ -1967,40 +2049,37 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     elseif event == 'ITEM_PUSH' then
 
-        local bag, texturePushed = ...
-        if bag >= 0 then
-            --=--printInfo("Item added to bag " .. bag .. " (" .. texturePushed .. ")")
-            -- Do the following after a short delay.
-            C_Timer.After(.3, function()
-                local nSlots = getContainerNumSlots(bag)
-                for slot = 1, nSlots do
-                    local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = getContainerItemInfo(bag, slot)
-                    if texture and tostring(texture) == tostring(texturePushed) then
-                        print('Pushed ' .. tostring(hyperlink)
-                            .. '  id='      .. tostring(itemId)
-                            .. '  quality=' .. tostring(quality)
-                            .. '  count='   .. tostring(stackCount)
-                            .. (isLocked    and '  (locked)'    or '')
-                            .. (isReadable  and '  (readable)'  or '')
-                            .. (isFiltered  and '  (filtered)'  or '')
-                            .. (isBound     and '  (bound)'     or '')
-                            .. (hasNoValue  and '  (novalue)'   or '')
-                        )
-                    end
-                end
-            end)
-        end
+        --=--local bag, texturePushed = ...
+        --=--if bag >= 0 then
+        --=--    printInfo("Item added to bag " .. bag .. " (" .. texturePushed .. ")")
+        --=--    -- Do the following after a short delay.
+        --=--    C_Timer.After(.3, function()
+        --=--        local nSlots = getContainerNumSlots(bag)
+        --=--        for slot = 1, nSlots do
+        --=--            local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = getContainerItemInfo(bag, slot)
+        --=--            if texture and tostring(texture) == tostring(texturePushed) then
+        --=--                print('Pushed ' .. tostring(hyperlink)
+        --=--                    .. '  id='      .. tostring(itemId)
+        --=--                    .. '  quality=' .. tostring(quality)
+        --=--                    .. '  count='   .. tostring(stackCount)
+        --=--                    .. (isLocked    and '  (locked)'    or '')
+        --=--                    .. (isReadable  and '  (readable)'  or '')
+        --=--                    .. (isFiltered  and '  (filtered)'  or '')
+        --=--                    .. (isBound     and '  (bound)'     or '')
+        --=--                    .. (hasNoValue  and '  (novalue)'   or '')
+        --=--                )
+        --=--            end
+        --=--        end
+        --=--    end)
+        --=--end
 
     elseif event == 'PLAYER_TARGET_CHANGED' then
 
-        -- The purpose of this code is to set the value of gPlayerTargetUnitId appropriately.
-        -- If the player is targeting an NPC, we set gPlayerTargetUnitId to its unitId.
+        -- The purpose of this code is to set the value of gLastUnitTargeted appropriately.
+        -- If the player is targeting an NPC, we set gLastUnitTargeted to its unitId.
         -- We use that later in determining the source of newly arriving items. For the most
         -- part, it's used to determine which vendor sold an item so we can check it against
         -- the list of approved vendors for the trailblazer challenge.
-
-        -- Start out by clearing the target.
-        gPlayerTargetUnitId = nil
 
         local guid = UnitGUID('target')
         local name = UnitName('target')
@@ -2010,13 +2089,15 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- We only care about Creatures, which are basically NPCs.
             if unitType == 'Creature' then
                 local _, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", guid)
-                gPlayerTargetUnitId = unitId
+                gLastUnitTargeted = unitId
                 --printInfo("Targeting NPC " .. name .. " (" .. unitId .. ")")
-            elseif unitType == 'Player' then
-                --printInfo("Targeting player " .. name)
             else
                 --printInfo("Targeting " .. name .. " (" .. guid .. ")")
             end
+        end
+
+        if not gLastUnitTargeted then
+            printInfo("Targeting nothing")
         end
 
     elseif event == 'PLAYER_REGEN_DISABLED' then
@@ -2169,39 +2250,69 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         C_Timer.After(.3, function()
 
             local itemId, itemText = parseItemLink(text)
-
             local matched = false
+
             if not matched then
-                local _, _, item = text:find("You receive loot: (.*)%.")
-                if item ~= nil then
+                local _, _, itemLink = text:find(L['You receive loot'] .. ": (.*)%.")
+                if itemLink ~= nil then
                     matched = true
-                    --printGood("You can use " .. item .. " (" .. itemId .. ")")
-                    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
-                    if type == Enum.ItemClass.Container and subType == 0 then -- normal bag
-                        local msg = "THE BLESSED RUN! " .. item
-                        printGood(msg)
-                        flashGood(msg)
-                    end
+                    itemCanBeUsed(itemId, gLastUnitTargeted, nil, nil, function(ok, link, why)
+                        if ok == 0 then
+                            if not link then link = "That item" end
+                            printWarning(link .. " cannot be used (" .. why .. ")")
+                        elseif ok == 1 then
+                            if not link then link = "That item" end
+                            printGood(link .. " can be used (" .. why .. ")")
+                        else
+                            if link then
+                                printInfo(link .. ": " .. why)
+                            else
+                                printWarning("Unable to look up item - please try again")
+                            end
+                        end
+                    end)
                 end
             end
+
             if not matched then
-                local _, _, item = text:find("You receive item: (.*)%.")
-                if item ~= nil then
+                local _, _, itemLink = text:find(L['You receive item'] .. ": (.*)%.")
+                if itemLink ~= nil then
                     matched = true
-                    if not itemIsAllowed(itemId, mountaineersCanUseNonLootedItem) then
-                        --playSound(ERROR_SOUND_FILE)
-                        printWarning("You cannot use " .. item .. " (" .. itemId .. ")")
-                        allowOrDisallowItem(itemId, false)
+                    local questSource, merchantSource = nil, nil
+                    if gQuestInteraction then
+                        questSource = gLastUnitTargeted
+                    elseif gMerchantInteraction then
+                        merchantSource = gLastUnitTargeted
                     end
+                    itemCanBeUsed(itemId, nil, questSource, merchantSource, function(ok, link, why)
+                        if ok == 0 then
+                            if not link then link = "That item" end
+                            printWarning(link .. " cannot be used (" .. why .. ")")
+                        elseif ok == 1 then
+                            if not link then link = "That item" end
+                            printGood(link .. " can be used (" .. why .. ")")
+                        else
+                            if link then
+                                printInfo(link .. ": " .. why)
+                            else
+                                printWarning("Unable to look up item - please try again")
+                            end
+                        end
+                    end)
                 end
             end
+
             if not matched then
-                local _, _, item = text:find("You create: (.*)%.")
-                if item ~= nil then
+                local _, _, itemLink = text:find(L['You create'] .. ": (.*)%.")
+                if itemLink ~= nil then
                     matched = true
-                    -- Make sure the player is allowed to use this item, since they made it.
+                    -- Make sure the player is allowed to use this itemLink, since they made it.
                     allowOrDisallowItem(itemId, true)
                 end
+            end
+
+            if not matched then
+                printWarning("Unable to determine whether or not you can use " .. itemLink)
             end
 
         end)
