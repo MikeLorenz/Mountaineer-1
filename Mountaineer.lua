@@ -438,6 +438,11 @@ local function maxLevel()
     return 60
 end
 
+local function printableLink(link)
+    if not link then return nil end
+    return string.gsub(link, '|', '||')
+end
+
 local function colorText(hex6, text)
     return "|cFF" .. hex6 .. text .. "|r"
 end
@@ -495,6 +500,13 @@ local L = {
     ["You create"] = "You create",
 }
 
+local ITEM_DISPOSITION_ALLOWED      = 1 -- /mtn allow, items fished, taken from chests, and self-made
+local ITEM_DISPOSITION_DISALLOWED   = 2 -- /mtn disallow
+local ITEM_DISPOSITION_LOOTED       = 3 -- items looted from mobs
+local ITEM_DISPOSITION_REWARDED     = 4 -- items given as quest rewards
+local ITEM_DISPOSITION_PURCHASED    = 5 -- items purchased from a vendor
+local ITEM_DISPOSITION_TRAILBLAZER  = 6 -- items purchased from an approved trailblazer vendor
+
 local functionQueue = Queue.new()
 
 local function initSavedVarsIfNec(force)
@@ -504,6 +516,7 @@ local function initSavedVarsIfNec(force)
             quiet = false,
             goodItems = {},
             showMiniMap = false,
+            hideGoodItems = false,
         }
         for k,v in pairs(gDefaultGoodItems) do
             AcctSaved.goodItems[k] = v
@@ -513,7 +526,7 @@ local function initSavedVarsIfNec(force)
         CharSaved = {
             isLucky = true,
             isTrailblazer = false,
-            items = {},
+            dispositions = {}, -- table of item dispositions (key = itemId, value = ITEM_DISPOSITION_xxx)
             madeWeapon = false,
             xpFromLastGain = 0,
         }
@@ -527,14 +540,30 @@ local function playSound(path)
     end
 end
 
-local function setQuiet(tf)
+local function setSound(tf)
     initSavedVarsIfNec()
-    AcctSaved.quiet = tf
+    if tf == nil then
+        AcctSaved.quiet = not AcctSaved.quiet
+    else
+        AcctSaved.quiet = tf
+    end
+    local value = ''
+    if AcctSaved.quiet then value = 'off' else value = 'on' end
+    printInfo("Sound is now " .. value)
 end
 
 local function setShowMiniMap(tf)
     initSavedVarsIfNec()
-    AcctSaved.showMiniMap = tf
+    if tf == nil then
+        AcctSaved.showMiniMap = not AcctSaved.showMiniMap
+    else
+        AcctSaved.showMiniMap = tf
+    end
+    if AcctSaved.showMiniMap then
+        MinimapCluster:Show()
+    else
+        MinimapCluster:Hide()
+    end
 end
 
 local function getXPFromLastGain()
@@ -592,6 +621,17 @@ local function dumpBags()
                     )
                 end
             end
+        end
+    end
+end
+
+local function dumpInventory(unit)
+    unit = unit or 'player'
+    for slot = 0, 23 do -- need to iterate through every slot, this does not include items in bag I think, need to get the ID's for these from the emulator
+        local itemId = GetInventoryItemID(unit, slot)
+        local link = GetInventoryItemLink(unit, slot)
+        if link then
+            print(slot, itemId, link, printableLink(link))
         end
     end
 end
@@ -1413,16 +1453,19 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
             if itemIsReagentOrUsableForAProfession(t) then
                 completionFunc(1, t.link, "reagent / profession item")
+                -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
                 return
             end
 
             if itemIsADrink(t) then
                 completionFunc(1, t.link, "drink")
+                -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
                 return
             end
 
             if itemIsAQuestItem(t) then
                 completionFunc(1, t.link, "quest item")
+                -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
                 return
             end
 
@@ -1430,10 +1473,12 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
                 if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
                     completionFunc(1, t.link, "trailblazer approved vendor")
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_TRAILBLAZER
                     return
                 end
 
                 completionFunc(0, t.link, "vendor")
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_PURCHASED
                 return
 
             end
@@ -1444,11 +1489,13 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
                 if itemIsFoodOrDrink(t) then
                     completionFunc(1, t.link, "food")
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
                     return
                 end
 
                 if itemIsUncraftable(t) then
                     completionFunc(1, t.link, "uncraftable item")
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
                     return
                 end
 
@@ -1459,23 +1506,34 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
                 if CharSaved.isLucky then
                     if itemIsANormalBag(t) then
                         completionFunc(1, t.link, "THE BLESSED RUN!")
+                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
                         return
                     end
                     completionFunc(1, t.link, "looted")
+                    if t.rarity > 0 then
+                        -- Don't save disposition if the item is gray. We know they are looted, and there's no need to pollute CharSaved with all the grays.
+                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                    end
                     return
                 end
 
                 if itemIsRare(t) then
                     completionFunc(1, t.link, "rare item")
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
                     return
                 end
 
                 if unitIsRare(lootedFromUnitId) then
                     completionFunc(1, t.link, "looted from rare mob")
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
                     return
                 end
 
                 completionFunc(0, t.link, "looted")
+                if t.rarity > 0 then
+                    -- Don't save disposition if the item is gray. We know they are looted, and there's no need to pollute CharSaved with all the grays.
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                end
                 return
 
             end
@@ -1484,20 +1542,24 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
                 if itemIsASpecialContainer(t) then
                     completionFunc(1, t.link, "special container")
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
                     return
                 end
 
                 if itemIsFromClassQuest(t) then
                     completionFunc(1, t.link, "class quest reward")
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
                     return
                 end
 
                 completionFunc(0, t.link, "quest reward")
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
                 return
 
             end
 
             completionFunc(0, t.link, "failed all tests")
+            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_DISALLOWED
             return
 
         end
@@ -1545,17 +1607,88 @@ local function itemIsAllowed(itemId, evaluationFunction)
         --print("Fell through to return true")
         return true
     end
+
 end
 
-local function checkEquippedItems()
+local function isItemAllowed(itemId)
+
+    if not itemId then return false, "no item id" end
+
+    initSavedVarsIfNec()
+
+    -- If there's an item in the slot, check it.
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
+    local dispo = CharSaved.dispositions[itemId]
+    if rarity == 0 then dispo = ITEM_DISPOSITION_LOOTED end
+
+    if AcctSaved.goodItems and AcctSaved.goodItems[itemId] then
+        -- All good (legacy data)
+    elseif dispo == ITEM_DISPOSITION_ALLOWED then
+        -- All good
+    elseif AcctSaved.badItems and AcctSaved.badItems[itemId] then
+        return false, "" -- (legacy data)
+    elseif dispo == ITEM_DISPOSITION_DISALLOWED then
+        return false, "disallowed"
+    elseif dispo == ITEM_DISPOSITION_TRAILBLAZER then
+        if not CharSaved.isTrailblazer then
+            return false, "purchased"
+        end
+    elseif dispo == ITEM_DISPOSITION_PURCHASED then
+        return false, "purchased"
+    elseif dispo == ITEM_DISPOSITION_LOOTED then
+        if not CharSaved.isLucky then
+            return false, "looted"
+        end
+    elseif dispo == ITEM_DISPOSITION_REWARDED then
+        return false, "quest reward"
+    end
+
+    return true
+
+end
+
+local function checkInventory()
+    --  0 = ammo
+    --  1 = head
+    --  2 = neck
+    --  3 = shoulder
+    --  4 = shirt
+    --  5 = chest
+    --  6 = waist
+    --  7 = legs
+    --  8 = feet
+    --  9 = wrist
+    -- 10 = hands
+    -- 11 = finger 1
+    -- 12 = finger 2
+    -- 13 = trinket 1
+    -- 14 = trinket 2
+    -- 15 = back
+    -- 16 = main hand
+    -- 17 = off hand
+    -- 18 = ranged
+    -- 19 = tabard
+    -- 20 = first bag (the rightmost one)
+    -- 21 = second bag
+    -- 22 = third bag
+    -- 23 = fourth bag (the leftmost one)
+
     local warningCount = 0
     for slot = 0, 18 do
-        local itemId = GetInventoryItemID("player", slot)
-        -- If there's an item in the slot, check it.
-        if not itemIsAllowed(itemId) then
-            warningCount = warningCount + 1
-            local _, link = GetItemInfo(itemId)
-            printWarning(link .. " should be unequipped")
+        local itemId = GetInventoryItemID('player', slot)
+        if itemId then
+            -- If there's an item in the slot, check it.
+            local ok, reason = isItemAllowed(itemId)
+            if not ok then
+                if reason then
+                    reason = '(' .. reason .. ')'
+                else
+                    reason = ''
+                end
+                local name, link = GetItemInfo(itemId)
+                printWarning(link .. " should be unequipped " .. reason)
+                warningCount = warningCount + 1
+            end
         end
     end
 
@@ -1579,7 +1712,7 @@ Parsing command line
 SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
 SlashCmdList["MOUNTAINEER"] = function(str)
 
-    local p1, p2, p3, p4, cmd, arg1
+    local p1, p2, p3, p4, cmd, arg1, match
     local override = true
 
     str = str:lower()
@@ -1588,6 +1721,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     if p1 then
         CharSaved.isLucky = true
         printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You can use any looted items."))
+        checkInventory()
         return
     end
 
@@ -1600,6 +1734,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
             CharSaved.isLazyBastard = false
             printWarning("Your lazy bastard challenge has been turned off")
         end
+        checkInventory()
         return
     end
 
@@ -1667,7 +1802,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         local level = UnitLevel('player');
         local warningCount = checkSkills()
         gSkillsAreUpToDate = (warningCount == 0)
-        checkEquippedItems()
+        checkInventory()
         return
     end
 
@@ -1677,33 +1812,29 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    p1, p2 = str:find("^sound +on$")
+    p1, p2, match = str:find("^sound *(%a*)$")
     if p1 then
-        setQuiet(false)
-        printInfo("Sound is now on")
+        match = string.lower(match)
+        if match == 'on' then
+            setSound(false)
+        elseif match == 'off' then
+            setSound(true)
+        else
+            setSound(nil)
+        end
         return
     end
 
-    p1, p2 = str:find("^sound +off$")
+    p1, p2, match = str:find("^minimap *(%a*)$")
     if p1 then
-        setQuiet(true)
-        printInfo("Sound is now off")
-        return
-    end
-
-    p1, p2 = str:find("^minimap +on$")
-    p3, p4 = str:find("^minimap +show$")
-    if p1 or p3 then
-        setShowMiniMap(true)
-        MinimapCluster:Show()
-        return
-    end
-
-    p1, p2 = str:find("^minimap +off$")
-    p3, p4 = str:find("^minimap +hide$")
-    if p1 or p3 then
-        setShowMiniMap(false)
-        MinimapCluster:Hide()
+        match = string.lower(match)
+        if match == 'on' or match == 'show' then
+            setShowMiniMap(true)
+        elseif match == 'off' or match == 'hide' then
+            setShowMiniMap(false)
+        else
+            setShowMiniMap(nil)
+        end
         return
     end
 
@@ -1762,6 +1893,12 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2 = str:find("^di$")
+    if p1 then
+        dumpInventory()
+        return
+    end
+
     p1, p2 = str:find("^ds$")
     if p1 then
         dumpSkills()
@@ -1796,10 +1933,10 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     print(colorText('ffff00', "/mtn version"))
     print("     Shows the current version of the addon.")
 
-    print(colorText('ffff00', "/mtn sound on/off"))
+    print(colorText('ffff00', "/mtn sound [on/off]"))
     print("     Turns addon sounds on or off.")
 
-    print(colorText('ffff00', "/mtn minimap on/off"))
+    print(colorText('ffff00', "/mtn minimap [on/off]"))
     print("     Turns the minimap on or off.")
 
     print(colorText('ffff00', "/mtn check {id/name/link}"))
@@ -1877,6 +2014,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         PLAYER_LOC = PlayerLocation:CreateFromUnit("player")
         PLAYER_CLASS_NAME, _, PLAYER_CLASS_ID = C_PlayerInfo.GetClass(PLAYER_LOC)
+
+        -- In case the player is using old CharSaved data, set some appropriate defaults.
+
+        if CharSaved.isLucky        == nil then CharSaved.isLucky       = true          end
+        if CharSaved.isTrailblazer  == nil then CharSaved.isTrailblazer = false         end
+        if CharSaved.madeWeapon     == nil then CharSaved.madeWeapon    = (level >= 10) end
+        if CharSaved.dispositions   == nil then CharSaved.dispositions  = {}            end
 
         -- MSL 2022-08-07
         -- I've expanded Mountaineer to include all classes except DKs.
@@ -1965,7 +2109,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
                 local warningCount = checkSkills()
                 gSkillsAreUpToDate = (warningCount == 0)
-                checkEquippedItems()
+                checkInventory()
 
             end)
 
@@ -2039,10 +2183,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         end
 
-        if not skipLoot then
-            printInfo("Loot table (" .. gLastLootSourceGUID .. ")")
-            print(ut.tfmt(lootTable))
-        end
+        --if not skipLoot then
+        --    printInfo("Loot table (" .. gLastLootSourceGUID .. ")")
+        --    print(ut.tfmt(lootTable))
+        --end
 
         --=--for i = 1, #lootTable do
         --=--    print(ut.tfmt(lootTable[i]))
@@ -2096,18 +2240,20 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         if guid and guid ~= gPlayerGUID then
             local unitType = strsplit("-", guid)
             -- We only care about Creatures, which are basically NPCs.
-            if unitType == 'Creature' then -- 'Player', GameObject'
+            if unitType == 'Creature' then
                 local _, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", guid)
                 gLastUnitTargeted = unitId
                 --printInfo("Targeting NPC " .. name .. " (" .. unitId .. ")")
+            elseif unitType == 'Player' then
+                --printInfo("Targeting player " .. name .. " (" .. guid .. ")")
             else
                 --printInfo("Targeting " .. name .. " (" .. guid .. ")")
             end
         end
 
-        if not gLastUnitTargeted then
-            printInfo("Targeting nothing")
-        end
+        --if not gLastUnitTargeted then
+        --    printInfo("Targeting nothing")
+        --end
 
     elseif event == 'PLAYER_REGEN_DISABLED' then
 
@@ -2254,7 +2400,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'CHAT_MSG_LOOT' then
 
         local text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons = ...
-        print("CHAT_MSG_LOOT", text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
+        --print("CHAT_MSG_LOOT", text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
 
         -- Do the following after a short delay.
         C_Timer.After(.3, function()
