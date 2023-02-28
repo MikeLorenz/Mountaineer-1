@@ -345,6 +345,7 @@ local ITEM_DISPOSITION_LOOTED       = 3 -- items looted from mobs
 local ITEM_DISPOSITION_REWARDED     = 4 -- items given as quest rewards
 local ITEM_DISPOSITION_PURCHASED    = 5 -- items purchased from a vendor
 local ITEM_DISPOSITION_TRAILBLAZER  = 6 -- items purchased from an approved trailblazer vendor
+local ITEM_DISPOSITION_RARE_MOB     = 7 -- items looted from rare mobs
 
 local functionQueue = Queue.new()
 
@@ -650,91 +651,6 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
 
     return true
 
-end
-
--- This function is used to decide on an item the first time it's looted.
-local function mountaineersCanUseNonLootedItem(itemId)
-    itemId = tostring(itemId)
-    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
-    --print(" name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice, " classId=", classId, " subclassId=", subclassId, " bindType=", bindType, " expacId=", expacId, " setId=", setId, " isCraftingReagent=", isCraftingReagent)
-    local lname = name:lower();
-    if classId == Enum.ItemClass.Questitem then
-        --print("Quest items are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Tradegoods then
-        --print("Trade goods are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Recipe then
-        --print("Recipes are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Reagent then
-        --print("Reagents are allowed")
-        return true
-    end
-    if isCraftingReagent then
-        --print("Crafting reagents are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Gem then
-        --print("Gems are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Glyph then
-        --print("Glyphs are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.ItemEnhancement then
-        --print("Item enhancements are allowed")
-        return true
-    end
-    if classId == Enum.ItemClass.Weapon then
-        --print("Skinning knives, mining picks, fishing poles, wands, staves, polearms are allowed")
-        if subclassId == Enum.ItemWeaponSubclass.Generic
-        or subclassId == Enum.ItemWeaponSubclass.Fishingpole
-        or subclassId == Enum.ItemWeaponSubclass.Wand
-        or subclassId == Enum.ItemWeaponSubclass.Staff
-        or subclassId == Enum.ItemWeaponSubclass.Polearm
-        or subclassId == Enum.ItemWeaponSubclass.Unarmed
-        then
-            return true
-        end
-    end
-    if classId == Enum.ItemClass.Armor then
-        if subclassId == Enum.ItemArmorSubclass.Shield
-        or subclassId == Enum.ItemArmorSubclass.Libram
-        or subclassId == Enum.ItemArmorSubclass.Idol
-        or subclassId == Enum.ItemArmorSubclass.Totem
-        or subclassId == Enum.ItemArmorSubclass.Sigil
-        or subclassId == Enum.ItemArmorSubclass.Relic
-        then
-            --print("Shields, librams, idols, totems, sigils, relics are allowed")
-            return true
-        end
-        if subclassId == Enum.ItemArmorSubclass.Generic then
-            if (equipLoc == INVTYPE_FINGER and gameVersion() >= 2)
-            or (equipLoc == INVTYPE_NECK and gameVersion() >= 2)
-            then
-                --print("Armor that can be created via jewelcrafting is not allowed")
-                return false
-            else
-                --print("Generic armor items are allowed (Spellstones, Firestones, Trinkets, Rings and Necks)")
-                return true
-            end
-        end
-    end
-    if lname:find("^pattern: ") or lname:find("^formula: ") or lname:find("^recipe: ") or lname:find("^design: ") or lname:find("^plans: ") then
-        --print("Recipes etc are allowed")
-        return true
-    end
-    if lname:find("^inscription of ") then
-        --print("Aldor/Scryer inscriptions allowed")
-        return true
-    end
-    --print("Fell through to return false")
-    return false
 end
 
 -- Checks skills. Returns 4 arrays of strings: fatals, warnings, reminders, exceptions.
@@ -1256,10 +1172,10 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
             return
         end
 
-        -- Convenience booleans that make the code below a little easier to read.
-        local isLooted    = (lootedFromUnitId    ~= nil)
-        local isPurchased = (purchasedFromUnitId ~= nil)
-        local isRewarded  = (rewardedByUnitId    ~= nil)
+        -- Convenience booleans that make the code below easier to read.
+        local isLooted    = lootedFromUnitId    ~= nil
+        local isPurchased = purchasedFromUnitId ~= nil
+        local isRewarded  = rewardedByUnitId    ~= nil
 
         -- Make sure there is ONE AND ONLY ONE source.
         local                 sourceCount = 0;
@@ -1271,15 +1187,35 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
             return
         end
 
-        if CharSaved.dispositions[itemId] == ITEM_DISPOSITION_ALLOWED then
-            completionFunc(1, t.link, "allowed")
-            return
+        -- Get the existing disposition for the item, or nil if there is none.
+        local dispo = CharSaved.dispositions[itemId]
+        if dispo ~= nil then
+
+            if dispo == ITEM_DISPOSITION_ALLOWED then
+                completionFunc(1, t.link, "allowed")
+                return
+            end
+
+            if dispo == ITEM_DISPOSITION_DISALLOWED then
+                completionFunc(0, t.link, "disallowed")
+                return
+            end
+
+            if sourceCount == 0 and dispo then
+                isLooted    = dispo == ITEM_DISPOSITION_LOOTED     or dispo == ITEM_DISPOSITION_RARE_MOB
+                isPurchased = dispo == ITEM_DISPOSITION_PURCHASED  or dispo == ITEM_DISPOSITION_TRAILBLAZER
+                isRewarded  = dispo == ITEM_DISPOSITION_REWARDED
+
+                if isLooted     then  sourceCount = sourceCount + 1  end
+                if isPurchased  then  sourceCount = sourceCount + 1  end
+                if isRewarded   then  sourceCount = sourceCount + 1  end
+            end
+
         end
 
-        if CharSaved.dispositions[itemId] == ITEM_DISPOSITION_DISALLOWED then
-            completionFunc(0, t.link, "disallowed")
-            return
-        end
+        -- Setting CharSaved.dispositions[t.itemId] to nil means that there is
+        -- enough information in the item intrinsically to determine its
+        -- disposition.
 
         if sourceCount == 0 then
 
@@ -1358,24 +1294,27 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
             if itemIsReagentOrUsableForAProfession(t) then
                 completionFunc(1, t.link, "reagent / profession item")
                 -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+                CharSaved.dispositions[t.itemId] = nil
                 return
             end
 
             if itemIsADrink(t) then
                 completionFunc(1, t.link, "drink")
                 -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+                CharSaved.dispositions[t.itemId] = nil
                 return
             end
 
             if itemIsAQuestItem(t) then
                 completionFunc(1, t.link, "quest item")
                 -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+                CharSaved.dispositions[t.itemId] = nil
                 return
             end
 
             if isPurchased then
 
-                if CharSaved.isTrailblazer and unitIsOpenWorldVendor(purchasedFromUnitId) then
+                if CharSaved.isTrailblazer and (dispo == ITEM_DISPOSITION_TRAILBLAZER or unitIsOpenWorldVendor(purchasedFromUnitId)) then
                     completionFunc(1, t.link, "trailblazer approved vendor")
                     CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_TRAILBLAZER
                     return
@@ -1387,19 +1326,25 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
             end
 
-            -- TODO: Need to figure out if the item came from a chest or fishing.
-
             if isLooted or isRewarded then
 
                 if itemIsFoodOrDrink(t) then
                     completionFunc(1, t.link, "food")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
+                    if isLooted then
+                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                    else
+                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+                    end
                     return
                 end
 
                 if itemIsUncraftable(t) then
                     completionFunc(1, t.link, "uncraftable item")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
+                    if isLooted then
+                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                    else
+                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+                    end
                     return
                 end
 
@@ -1423,13 +1368,13 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
                 if itemIsRare(t) then
                     completionFunc(1, t.link, "rare item")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
                     return
                 end
 
-                if unitIsRare(lootedFromUnitId) then
+                if dispo == ITEM_DISPOSITION_RARE_MOB or unitIsRare(lootedFromUnitId) then
                     completionFunc(1, t.link, "looted from rare mob")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_RARE_MOB
                     return
                 end
 
@@ -1446,13 +1391,13 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 
                 if itemIsASpecialContainer(t) then
                     completionFunc(1, t.link, "special container")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
                     return
                 end
 
                 if itemIsFromClassQuest(t) then
                     completionFunc(1, t.link, "class quest reward")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_ALLOWED
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
                     return
                 end
 
@@ -1463,7 +1408,7 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
             end
 
             completionFunc(0, t.link, "failed all tests")
-            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_DISALLOWED
+            CharSaved.dispositions[t.itemId] = nil
             return
 
         end
