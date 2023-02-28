@@ -1,289 +1,23 @@
 --[[
-================================================================================
-
-Created v1 12/2021 by ManchegoMike (MSL) -- https://www.twitch.tv/ManchegoMike
-Created v2 08/2022 by ManchegoMike (MSL)
-
-http://tinyurl.com/hc-mountaineers
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  Created v1 12/2021 by ManchegoMike (MSL)                                    @@
+@@  Created v2 08/2022 by ManchegoMike (MSL)                                    @@
+@@                                                                              @@
+@@  http://tinyurl.com/hc-mountaineers                                          @@
+@@  https://www.twitch.tv/ManchegoMike                                          @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 local ADDON_VERSION = '2.0.5' -- This should be the same as in the .toc file.
 
-local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
-
-local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
-local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
-
-local gPlayerOpening = 0            -- 1=opening, 2=opened -- This is set when UNIT_SPELLCAST_SUCCEEDED fires on spell 3365 (Opening); set to 0 on LOOT_CLOSED
-local gPlayerGUID = ''
-local gLastUnitTargeted = nil
-local gQuestInteraction = false
-local gMerchantInteraction = false
-local gLastLootSourceGUID = ''
-
--- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
-local gSkillsAreUpToDate = false
-
--- This list is shorter than before because I've done a better job of allowing items according to their categories.
-local gNewDefaultGoodItems = {
-    [ '2901'] = "used for profession and as a crude weapon", -- mining pick
-    [ '3342'] = "looted from a chest", -- captain sander's shirt
-    [ '3343'] = "looted from a chest", -- captain sander's booty bag
-    [ '3344'] = "looted from a chest", -- captain sander's sash
-    [ '5976'] = "basic item used for guilds", -- guild tabard
-    [ '6256'] = "used for profession and as a crude weapon", -- fishing pole
-    [ '6365'] = "used for profession and as a crude weapon", -- strong fishing pole
-    [ '6529'] = "used for fishing", -- shiny bauble
-    [ '6530'] = "used for fishing", -- nightcrawlers
-    [ '6532'] = "used for fishing", -- bright baubles
-    [ '6533'] = "used for fishing", -- aquadynamic fish attractor
-    [ '7005'] = "used for profession and as a crude weapon", -- skinning knife
-    ['52021'] = "made via engineering", -- Iceblade Arrow
-    ['41164'] = "made via engineering", -- Mammoth Cutters
-    ['41165'] = "made via engineering", -- Saronite Razorheads
-    ['52020'] = "made via engineering", -- Shatter Rounds
-    ['10512'] = "made via engineering", -- Hi-Impact Mithril Slugs
-    ['15997'] = "made via engineering", -- Thorium Shells
-    ['10513'] = "made via engineering", -- Mithril Gyro-Shot
-    ['23772'] = "made via engineering", -- Fel Iron Shells
-    [ '8067'] = "made via engineering", -- Crafted Light Shot
-    [ '8068'] = "made via engineering", -- Crafted Heavy Shot
-    [ '8069'] = "made via engineering", -- Crafted Solid Shot
-    ['23773'] = "made via engineering", -- Adamantite Shells
-    ['18042'] = "make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
-    ['33803'] = "made via engineering", -- Adamantite Stinger
-}
-
-local gNewDefaultBadItems = {
-    ['11285'] = "vendor-only", -- Jagged Arrow
-    [ '3030'] = "vendor-only", -- Razor Arrow
-    ['28056'] = "vendor-only", -- Blackflight Arrow
-    ['31737'] = "vendor-only", -- Timeless Arrow
-    ['28053'] = "vendor-only", -- Wicked Arrow
-    ['41586'] = "vendor-only", -- Terrorshaft Arrow
-    [ '2515'] = "vendor-only", -- Sharp Arrow
-    ['41584'] = "vendor-only", -- Frostbite Bullets
-    ['34581'] = "vendor-only", -- Mysterious Arrow
-    ['11284'] = "vendor-only", -- Accurate Slugs
-    [ '2519'] = "vendor-only", -- Heavy Shot
-    [ '3033'] = "vendor-only", -- Solid Shot
-    ['31735'] = "vendor-only", -- Timeless Shell
-    [ '2512'] = "vendor-only", -- Rough Arrow
-    ['28061'] = "vendor-only", -- Ironbite Shell
-    ['10579'] = "requires a vendor-only item", -- Explosive Arrow
-    ['28060'] = "vendor-only", -- Impact Shot
-    ['19316'] = "vendor-only", -- Ice Threaded Arrow
-    ['19317'] = "vendor-only", -- Ice Threaded Bullet
-    ['32882'] = "vendor-only", -- Hellfire Shot
-    [ '2516'] = "vendor-only", -- Light Shot
-    ['31949'] = "vendor-only", -- Warden's Arrow
-    ['30611'] = "vendor-only", -- Halaani Razorshaft
-    ['24412'] = "vendor-only", -- Warden's Arrow
-    ['30612'] = "vendor-only", -- Halaani Grimshot
-    ['32761'] = "vendor-only", -- The Sarge's Bullet
-    ['32883'] = "vendor-only", -- Felbane Slugs
-    ['24417'] = "vendor-only", -- Scout's Arrow
-    ['34582'] = "vendor-only", -- Mysterious Shell
-}
-
-local gDefaultGoodItems = {
-    [  '159'] = true, -- refreshing spring water
-    [  '765'] = true, -- silverleaf (herb)
-    [  '785'] = true, -- mageroyal (herb)
-    [ '1179'] = true, -- ice cold milk
-    [ '1205'] = true, -- melon juice
-    [ '1645'] = true, -- moonberry juice
-    [ '1708'] = true, -- sweet nectar
-    [ '2320'] = true, -- coarse thread
-    [ '2321'] = true, -- fine thread
-    [ '2324'] = true, -- bleach
-    [ '2325'] = true, -- black dye
-    [ '2447'] = true, -- peacebloom (herb)
-    [ '2449'] = true, -- earthroot (herb)
-    [ '2450'] = true, -- briarthorn (herb)
-    [ '2452'] = true, -- swiftthistle (herb)
-    [ '2453'] = true, -- bruiseweed (herb)
-    [ '2593'] = true, -- flaks of stormwind tawny
-    [ '2594'] = true, -- flagon of dwarven honeymead
-    [ '2595'] = true, -- jug of badlands bourbon
-    [ '2596'] = true, -- skin of dwarven stout
-    [ '2604'] = true, -- red dye
-    [ '2605'] = true, -- green dye
-    [ '2665'] = true, -- stormwind seasoning herbs
-    [ '2678'] = true, -- mild spices
-    [ '2692'] = true, -- hot spices
-    [ '2723'] = true, -- bottle of dalaran noir
-    [ '2880'] = true, -- weak flux
-    [ '2901'] = true, -- mining pick
-    [ '2928'] = true, -- dust of decay
-    [ '2930'] = true, -- essence of pain
-    [ '3342'] = true, -- captain sander's shirt
-    [ '3343'] = true, -- captain sander's booty bag
-    [ '3344'] = true, -- captain sander's sash
-    [ '3355'] = true, -- wild steelbloom (herb)
-    [ '3356'] = true, -- kingsblood (herb)
-    [ '3357'] = true, -- liferoot (herb)
-    [ '3358'] = true, -- khadgar's whisker (herb)
-    [ '3369'] = true, -- grave moss (herb)
-    [ '3371'] = true, -- empty vial
-    [ '3371'] = true, -- mpty vial
-    [ '3372'] = true, -- leaded vial
-    [ '3419'] = true, -- red rose
-    [ '3420'] = true, -- black rose
-    [ '3421'] = true, -- simple wildflowers
-    [ '3422'] = true, -- beautiful wildflowers
-    [ '3423'] = true, -- bouquet of white roses
-    [ '3424'] = true, -- bouquet of black roses
-    [ '3466'] = true, -- strong flux
-    [ '3713'] = true, -- soothing spices
-    [ '3777'] = true, -- lethargy root
-    [ '3818'] = true, -- fadeleaf (herb)
-    [ '3819'] = true, -- wintersbite (herb)
-    [ '3820'] = true, -- stranglekelp (herb)
-    [ '3821'] = true, -- goldthorn (herb)
-    [ '3857'] = true, -- coal
-    [ '4289'] = true, -- salt
-    [ '4291'] = true, -- silken thread
-    [ '4340'] = true, -- gray dye
-    [ '4341'] = true, -- yellow dye
-    [ '4342'] = true, -- purple dye
-    [ '4470'] = true, -- simple wood
-    [ '4471'] = true, -- flint and tinder
-    [ '4536'] = true, -- shiny red apple
-    [ '4625'] = true, -- firebloom (herb)
-    [ '5042'] = true, -- red ribboned wrapping paper
-    [ '5048'] = true, -- blue ribboned wrapping paper
-    [ '5060'] = true, -- thieves' tools
-    [ '5140'] = true, -- flash powder
-    [ '5173'] = true, -- deathweed
-    [ '5565'] = true, -- infernal stone
-    [ '5956'] = true, -- blacksmith hammer
-    [ '5976'] = true, -- guild tabard
-    [ '6217'] = true, -- copper rod
-    [ '6256'] = true, -- fishing pole
-    [ '6260'] = true, -- blue dye
-    [ '6261'] = true, -- orange dye
-    [ '6365'] = true, -- strong fishing pole
-    [ '6529'] = true, -- shiny bauble
-    [ '6530'] = true, -- nightcrawlers
-    [ '6532'] = true, -- bright baubles
-    [ '6533'] = true, -- aquadynamic fish attractor
-    [ '6953'] = true, -- verigan's fist (paladin quest)
-    [ '6966'] = true, -- elunite axe (warrior quest)
-    [ '6967'] = true, -- elunite sword (warrior quest)
-    [ '6968'] = true, -- elunite hammer (warrior quest)
-    [ '6969'] = true, -- elunite dagger (warrior quest)
-    [ '6975'] = true, -- whirlwind axe (warrior quest)
-    [ '6976'] = true, -- whirlwind warhammer (warrior quest)
-    [ '6977'] = true, -- whirlwind sword (warrior quest)
-    [ '6978'] = true, -- umbral axe (warrior quest)
-    [ '6979'] = true, -- haggard's axe (warrior quest)
-    [ '6980'] = true, -- haggard's dagger (warrior quest)
-    [ '6981'] = true, -- umbral dagger (warrior quest)
-    [ '6982'] = true, -- umbral mace (warrior quest)
-    [ '6983'] = true, -- haggard's hammer (warrior quest)
-    [ '6984'] = true, -- umbral sword (warrior quest)
-    [ '6985'] = true, -- haggard's sword (warrior quest)
-    [ '7005'] = true, -- skinning knife
-    [ '7115'] = true, -- heirloom axe (warrior quest)
-    [ '7116'] = true, -- heirloom dagger (warrior quest)
-    [ '7117'] = true, -- heirloom hammer (warrior quest)
-    [ '7118'] = true, -- heirloom sword (warrior quest)
-    [ '7298'] = true, -- blade of cunning (rogue quest)
-    [ '7326'] = true, -- thun'grim's axe (warrior quest)
-    [ '7327'] = true, -- thun'grim's dagger (warrior quest)
-    [ '7328'] = true, -- thun'grim's mace (warrior quest)
-    [ '7329'] = true, -- thun'grim's sword (warrior quest)
-    [ '8153'] = true, -- wildvine (herb)
-    [ '8343'] = true, -- heavy silken thread
-    [ '8766'] = true, -- morning glory dew
-    [ '8831'] = true, -- purple lotus (herb)
-    [ '8836'] = true, -- arthas' tears (herb)
-    [ '8838'] = true, -- sungrass (herb)
-    [ '8839'] = true, -- blindweed (herb)
-    [ '8845'] = true, -- ghost mushroom (herb)
-    [ '8846'] = true, -- gromsblood (herb)
-    [ '8923'] = true, -- essence of agony
-    [ '8924'] = true, -- dust of deterioration
-    [ '8925'] = true, -- crystal vial
-    [ '9517'] = true, -- celestial stave (mage quest)
-    ['10290'] = true, -- pink dye
-    ['10572'] = true, -- freezing shard (mage quest)
-    ['10766'] = true, -- plaguerot sprig (mage quest)
-    ['10938'] = true, -- lesser magic essence
-    ['10940'] = true, -- strange dust
-    ['11291'] = true, -- star wood
-    ['13463'] = true, -- dreamfoil (herb)
-    ['13464'] = true, -- golden sansam (herb)
-    ['13465'] = true, -- mountain silversage (herb)
-    ['13466'] = true, -- plaguebloom (herb)
-    ['13467'] = true, -- icecap (herb)
-    ['13468'] = true, -- black lotus (herb)
-    ['14341'] = true, -- rune thread
-    ['16583'] = true, -- demonic figurine
-    ['17020'] = true, -- arcane powder
-    ['17021'] = true, -- wild berries
-    ['17026'] = true, -- wild thornroot
-    ['17028'] = true, -- holy candle
-    ['17029'] = true, -- sacred candle
-    ['17030'] = true, -- ankh
-    ['17031'] = true, -- rune of teleportation
-    ['17032'] = true, -- rune of portals
-    ['17033'] = true, -- symbol of divinity
-    ['17034'] = true, -- maple seed
-    ['17035'] = true, -- stranglethorn seed
-    ['17036'] = true, -- ashwood seed
-    ['17037'] = true, -- hornbeam seed
-    ['17038'] = true, -- ironwood seed
-    ['18256'] = true, -- imbued vial
-    ['18567'] = true, -- elemental flux
-    ['19726'] = true, -- bloodvine (herb)
-    ['19727'] = true, -- blood scythe (herb)
-    ['20815'] = true, -- jeweler's kit
-    ['20824'] = true, -- simple grinder
-    ['21177'] = true, -- symbol of kings
-    ['22147'] = true, -- flintweed seed
-    ['22148'] = true, -- wild quillvine
-    ['22710'] = true, -- bloodthistle (herb)
-    ['22785'] = true, -- felweed (herb)
-    ['22786'] = true, -- dreaming glory (herb)
-    ['22787'] = true, -- ragveil (herb)
-    ['22788'] = true, -- flame cap (herb)
-    ['22789'] = true, -- terocone (herb)
-    ['22790'] = true, -- ancient lichen (herb)
-    ['22791'] = true, -- netherbloom (herb)
-    ['22792'] = true, -- nightmare vine (herb)
-    ['22793'] = true, -- mana thistle (herb)
-    ['22794'] = true, -- fel lotus (herb)
-    ['22797'] = true, -- nightmare seed (herb)
-    ['23420'] = true, -- engraved axe (warrior quest)
-    ['23421'] = true, -- engraved sword (warrior quest)
-    ['23422'] = true, -- engraved dagger (warrior quest)
-    ['23423'] = true, -- mercenary greatsword (warrior quest)
-    ['23429'] = true, -- mercenary clout (warrior quest)
-    ['23430'] = true, -- mercenary sword (warrior quest)
-    ['23431'] = true, -- mercenary stiletto (warrior quest)
-    ['23432'] = true, -- engraved greatsword (warrior quest)
-    ['24136'] = true, -- farstrider's bow (hunter quest)
-    ['24138'] = true, -- silver crossbow (hunter quest)
-    ['27860'] = true, -- purified draenic water
-    ['28399'] = true, -- filtered draenic water
-    ['30504'] = true, -- leafblade dagger (rogue quest)
-    ['30817'] = true, -- simple flour
-    ['33034'] = true, -- gordok grog
-    ['33035'] = true, -- ogre mead
-    ['33036'] = true, -- mudder's milk
-    ['38518'] = true, -- cro's apple
-}
-
 --[[
-================================================================================
-
-Lua utility functions that are independent of WoW
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  Lua utility functions that are independent of WoW                           @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 local ut = {}
@@ -393,11 +127,11 @@ function Queue.pop(q)
 end
 
 --[[
-================================================================================
-
-WoW utility functions & vars that could be used by any WoW addon
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  WoW utility functions & vars that could be used by any WoW addon            @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 local PRINT_PREFIX = "MOUNTAINEER: "
@@ -415,6 +149,31 @@ local CLASS_WARLOCK = 9
 local CLASS_MONK = 10
 local CLASS_DRUID = 11
 local CLASS_DEMONHUNTER = 12
+
+local SLOT_AMMO = 0
+local SLOT_HEAD = 1
+local SLOT_NECK = 2
+local SLOT_SHOULDER = 3
+local SLOT_SHIRT = 4
+local SLOT_CHEST = 5
+local SLOT_WAIST = 6
+local SLOT_LEGS = 7
+local SLOT_FEET = 8
+local SLOT_WRIST = 9
+local SLOT_HANDS = 10
+local SLOT_FINGER_1 = 11
+local SLOT_FINGER_2 = 12
+local SLOT_TRINKET_1 = 13
+local SLOT_TRINKET_2 = 14
+local SLOT_BACK = 15
+local SLOT_MAIN_HAND = 16
+local SLOT_OFF_HAND = 17
+local SLOT_RANGED = 18
+local SLOT_TABARD = 19
+local SLOT_BAG_1 = 20 -- the rightmost one
+local SLOT_BAG_2 = 21
+local SLOT_BAG_3 = 22
+local SLOT_BAG_4 = 23 -- the leftmost one
 
 local function gameVersion()
     if GAME_VERSION ~= nil then return GAME_VERSION end
@@ -486,11 +245,11 @@ local function parseItemLink(link)
 end
 
 --[[
-================================================================================
-
-Local vars and functions for this addon
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  Local vars and functions for this addon                                     @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 -- These will need to be localized if not enUS.
@@ -498,6 +257,86 @@ local L = {
     ["You receive loot"] = "You receive loot",
     ["You receive item"] = "You receive item",
     ["You create"] = "You create",
+}
+
+local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
+
+local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
+local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
+
+local gPlayerOpening = 0            -- 1=opening, 2=opened -- This is set when UNIT_SPELLCAST_SUCCEEDED fires on spell 3365 (Opening); set to 0 on LOOT_CLOSED
+local gPlayerGUID = ''
+local gLastUnitTargeted = nil
+local gLastLootSourceGUID = ''
+
+-- I had to make these two mutually exclusive due to the screwy way WoW events work.
+-- When we set one to a unit id, we set the other to nil.
+local gLastQuestUnitTargeted = nil
+local gLastMerchantUnitTargeted = nil
+
+-- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
+local gSkillsAreUpToDate = false
+
+-- This list is shorter than before because I've done a better job of allowing items according to their categories.
+local gDefaultAllowedItems = {
+    [ '2901'] = "used for profession and as a crude weapon", -- mining pick
+    [ '3342'] = "looted from a chest", -- captain sander's shirt
+    [ '3343'] = "looted from a chest", -- captain sander's booty bag
+    [ '3344'] = "looted from a chest", -- captain sander's sash
+    [ '5976'] = "basic item used for guilds", -- guild tabard
+    [ '6256'] = "used for profession and as a crude weapon", -- fishing pole
+    [ '6365'] = "used for profession and as a crude weapon", -- strong fishing pole
+    [ '6529'] = "used for fishing", -- shiny bauble
+    [ '6530'] = "used for fishing", -- nightcrawlers
+    [ '6532'] = "used for fishing", -- bright baubles
+    [ '6533'] = "used for fishing", -- aquadynamic fish attractor
+    [ '7005'] = "used for profession and as a crude weapon", -- skinning knife
+    ['52021'] = "made via engineering", -- Iceblade Arrow
+    ['41164'] = "made via engineering", -- Mammoth Cutters
+    ['41165'] = "made via engineering", -- Saronite Razorheads
+    ['52020'] = "made via engineering", -- Shatter Rounds
+    ['10512'] = "made via engineering", -- Hi-Impact Mithril Slugs
+    ['15997'] = "made via engineering", -- Thorium Shells
+    ['10513'] = "made via engineering", -- Mithril Gyro-Shot
+    ['23772'] = "made via engineering", -- Fel Iron Shells
+    [ '8067'] = "made via engineering", -- Crafted Light Shot
+    [ '8068'] = "made via engineering", -- Crafted Heavy Shot
+    [ '8069'] = "made via engineering", -- Crafted Solid Shot
+    ['23773'] = "made via engineering", -- Adamantite Shells
+    ['18042'] = "make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
+    ['33803'] = "made via engineering", -- Adamantite Stinger
+}
+
+local gDefaultDisallowedItems = {
+    ['11285'] = "vendor-only", -- Jagged Arrow
+    [ '3030'] = "vendor-only", -- Razor Arrow
+    ['28056'] = "vendor-only", -- Blackflight Arrow
+    ['31737'] = "vendor-only", -- Timeless Arrow
+    ['28053'] = "vendor-only", -- Wicked Arrow
+    ['41586'] = "vendor-only", -- Terrorshaft Arrow
+    [ '2515'] = "vendor-only", -- Sharp Arrow
+    ['41584'] = "vendor-only", -- Frostbite Bullets
+    ['34581'] = "vendor-only", -- Mysterious Arrow
+    ['11284'] = "vendor-only", -- Accurate Slugs
+    [ '2519'] = "vendor-only", -- Heavy Shot
+    [ '3033'] = "vendor-only", -- Solid Shot
+    ['31735'] = "vendor-only", -- Timeless Shell
+    [ '2512'] = "vendor-only", -- Rough Arrow
+    ['28061'] = "vendor-only", -- Ironbite Shell
+    ['10579'] = "requires a vendor-only item", -- Explosive Arrow
+    ['28060'] = "vendor-only", -- Impact Shot
+    ['19316'] = "vendor-only", -- Ice Threaded Arrow
+    ['19317'] = "vendor-only", -- Ice Threaded Bullet
+    ['32882'] = "vendor-only", -- Hellfire Shot
+    [ '2516'] = "vendor-only", -- Light Shot
+    ['31949'] = "vendor-only", -- Warden's Arrow
+    ['30611'] = "vendor-only", -- Halaani Razorshaft
+    ['24412'] = "vendor-only", -- Warden's Arrow
+    ['30612'] = "vendor-only", -- Halaani Grimshot
+    ['32761'] = "vendor-only", -- The Sarge's Bullet
+    ['32883'] = "vendor-only", -- Felbane Slugs
+    ['24417'] = "vendor-only", -- Scout's Arrow
+    ['34582'] = "vendor-only", -- Mysterious Shell
 }
 
 local ITEM_DISPOSITION_ALLOWED      = 1 -- /mtn allow, items fished, taken from chests, and self-made
@@ -512,15 +351,10 @@ local functionQueue = Queue.new()
 local function initSavedVarsIfNec(force)
     if force or AcctSaved == nil then
         AcctSaved = {
-            badItems = {},
             quiet = false,
-            goodItems = {},
             showMiniMap = false,
-            hideGoodItems = false,
+            verbose = true,
         }
-        for k,v in pairs(gDefaultGoodItems) do
-            AcctSaved.goodItems[k] = v
-        end
     end
     if force or CharSaved == nil then
         CharSaved = {
@@ -530,6 +364,38 @@ local function initSavedVarsIfNec(force)
             madeWeapon = false,
             xpFromLastGain = 0,
         }
+    end
+end
+
+local function printAllowedItem(itemLink, why)
+    if AcctSaved.verbose then
+        if why and why ~= '' then
+            printGood(itemLink .. " is allowed (" .. why .. ")")
+        else
+            printGood(itemLink .. " is allowed")
+        end
+    end
+end
+
+local function printDisallowedItem(itemLink, why)
+    local show = true
+    if not AcctSaved.verbose then
+        local itemId = parseItemLink(itemLink)
+        if itemId then
+            local name, link, rarity = GetItemInfo(itemLink)
+            if name then
+                if rarity == 0 then
+                    show = false
+                end
+            end
+        end
+    end
+    if show then
+        if why and why ~= '' then
+            printWarning(itemLink .. " is not allowed (" .. why .. ")")
+        else
+            printWarning(itemLink .. " is not allowed")
+        end
     end
 end
 
@@ -550,6 +416,18 @@ local function setSound(tf)
     local value = ''
     if AcctSaved.quiet then value = 'off' else value = 'on' end
     printInfo("Sound is now " .. value)
+end
+
+local function setVerbose(tf)
+    initSavedVarsIfNec()
+    if tf == nil then
+        AcctSaved.verbose = not AcctSaved.verbose
+    else
+        AcctSaved.verbose = tf
+    end
+    local value = ''
+    if AcctSaved.verbose then value = 'on' else value = 'off' end
+    printInfo("Verbose mode is now " .. value)
 end
 
 local function setShowMiniMap(tf)
@@ -718,40 +596,60 @@ end
 
 -- Allows or disallows an item (or forgets an item if allow == nil). Returns true if the item was found and modified. Returns false if there was an error.
 local function allowOrDisallowItem(itemStr, allow, userOverride)
+
     local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
+
     if not name then
         printWarning("Item not found: " .. arg1)
         return false
     end
-    local id, text = parseItemLink(link)
-    if not id or not text then
+
+    local itemId, text = parseItemLink(link)
+    if not itemId or not text then
         printWarning("Unable to parse item link: \"" .. link .. '"')
         return false
     end
+
     initSavedVarsIfNec()
+
     if allow == nil then
-        -- Special case, when passing allow==nil, it means clear the item from both the good and bad lists
-        AcctSaved.badItems[id] = nil
-        if not gDefaultGoodItems[id] then
-            AcctSaved.goodItems[id] = nil
-        end
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now forgotten') end
-    elseif allow then
-        -- If the user is manually overriding an item to be good, put it on the good list.
-        if userOverride then AcctSaved.goodItems[id] = true end
-        AcctSaved.badItems[id] = nil
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now allowed') end
-    else
-        -- If the user is manually overriding an item to be bad, remove it from the good list.
-        if gDefaultGoodItems[id] then
-            if userOverride then printInfo(link .. ' (' .. id .. ') is always allowed & cannot be disallowed') end
+
+        if gDefaultAllowedItems[itemId] then
+            if userOverride then printWarning(link .. " (" .. itemId .. ") is allowed by default and cannot be changed") end
             return false
         end
-        if userOverride then AcctSaved.goodItems[id] = nil end
-        AcctSaved.badItems[id] = true
-        if userOverride then printInfo(link .. ' (' .. id .. ') is now disallowed') end
+        if gDefaultDisallowedItems[itemId] then
+            if userOverride then printWarning(link .. " (" .. itemId .. ") is disallowed by default and cannot be changed") end
+            return false
+        end
+        if userOverride then
+            printWarning(link .. " (" .. itemId .. ") is always allowed by default")
+        end
+        CharSaved.dispositions[itemId] = nil
+        if userOverride then printInfo(link .. " (" .. itemId .. ") is now forgotten") end
+
+    elseif allow then
+
+        if gDefaultDisallowedItems[itemId] then
+            if userOverride then printWarning(link .. " (" .. itemId .. ") is disallowed by default and cannot be changed") end
+            return false
+        end
+        CharSaved.dispositions[itemId] = ITEM_DISPOSITION_ALLOWED
+        if userOverride then printInfo(link .. " (" .. itemId .. ") is now allowed") end
+
+    else
+
+        if gDefaultAllowedItems[itemId] then
+            if userOverride then printWarning(link .. " (" .. itemId .. ") is allowed by default and cannot be changed") end
+            return false
+        end
+        CharSaved.dispositions[itemId] = ITEM_DISPOSITION_DISALLOWED
+        if userOverride then printInfo(link .. " (" .. itemId .. ") is now disallowed") end
+
     end
+
     return true
+
 end
 
 -- This function is used to decide on an item the first time it's looted.
@@ -987,15 +885,16 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
 end
 
 --[[
-================================================================================
-
-This group of 'itemIs...' and 'unitIs...' functions are used by the current
-implementation of the Table of Usable Items. None of these functions use the
-allowed or disallowed item lists.
-
-They use itemInfo = {itemId, GetItemInfo(itemId)} as set in itemCanBeUsed().
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  This group of 'itemIs...' and 'unitIs...' functions are used by the current @@
+@@  implementation of the Table of Usable Items. None of these function use the @@
+@@  allowed or disallowed item lists.                                           @@
+@@                                                                              @@
+@@  They use itemInfo = {itemId, GetItemInfo(itemId)} as set in                 @@
+@@  itemCanBeUsed().                                                            @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 -- Returns true if the item cannot be crafted in this version of WoW, and is therefore allowed to be looted or accepted as a quest reward.
@@ -1283,33 +1182,34 @@ local function unitIsOpenWorldVendor(unitId)
 end
 
 --[[
-================================================================================
-
-BEGIN Table of Usable Items (see the Mountaineer document)
-
-This function can be called in one of two modes:
-    No unitId arguments:
-        This is typically from a player request about an item where we don't
-        know how they got the item. The best we can do it see if it meets any
-        of the special item criteria and advise them accordingly.
-    Exactly one non-nil unitId argument:
-        Given the origin of the item, the function can make a decision about
-        whether the item is usable.
-
-The function returns 3 values:
-    Number:
-        0=no, 1=yes, 2=it depends on the context.
-        If exactly one unitId argument is passed, the value will be 0 or 1.
-        If none are passed, the value will probably be 2.
-    String:
-        The link for the item
-    String:
-        If exactly one unitId argument is passed, the text should fit with
-        this: Item allowed (...) or Item not allowed (...)
-        If no unitId arguments are passed, the text is longer, providing a
-        more complete explanation, as you might find in the document.
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  BEGIN Table of Usable Items (see the Mountaineer document)                  @@
+@@                                                                              @@
+@@  This function can be called in one of two modes:                            @@
+@@      No unitId arguments:                                                    @@
+@@          This is typically from a player request about an item where we      @@
+@@          don't know how they got the item. The best we can do it see if      @@
+@@          it meets any of the special item criteria and advise them           @@
+@@          accordingly.                                                        @@
+@@      Exactly one non-nil unitId argument:                                    @@
+@@          Given the origin of the item, the function can make a decision      @@
+@@          about whether the item is usable.                                   @@
+@@                                                                              @@
+@@  The function returns 3 values:                                              @@
+@@      Number:                                                                 @@
+@@          0=no, 1=yes, 2=it depends on the context.                           @@
+@@          If exactly one unitId argument is passed, the value is 0 or 1.      @@
+@@          If none are passed, the value will probably be 2.                   @@
+@@      String:                                                                 @@
+@@          The link for the item                                               @@
+@@      String:                                                                 @@
+@@          If exactly one unitId argument is passed, the text should fit       @@
+@@          with this: Item allowed (...) or Item not allowed (...)             @@
+@@          If no unitId arguments are passed, the text is longer, providing    @@
+@@          a more complete explanation, as you might find in the document.     @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchasedFromUnitId, completionFunc)
@@ -1351,16 +1251,10 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
         --local id, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = unpack(itemInfo)
 
         -- If the item is already on the allowed list, we don't need to use any logic.
-        if gNewDefaultGoodItems[itemId] then
-            completionFunc(1, t.link, gNewDefaultGoodItems[itemId], link)
+        if gDefaultAllowedItems[itemId] then
+            completionFunc(1, t.link, gDefaultAllowedItems[itemId], link)
             return
         end
-
-        -- If the item is already on the allowed list, we don't need to use any logic.
-        --if AcctSaved.goodItems[itemId] then
-        --    completionFunc(true, t.link, "on your allowed list")
-        --    return
-        --end
 
         -- Convenience booleans that make the code below a little easier to read.
         local isLooted    = (lootedFromUnitId    ~= nil)
@@ -1374,6 +1268,16 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
         if isRewarded   then  sourceCount = sourceCount + 1  end
         if sourceCount > 1 then
             completionFunc(0, t.link, sourceCount .. " item sources were specified")
+            return
+        end
+
+        if CharSaved.dispositions[itemId] == ITEM_DISPOSITION_ALLOWED then
+            completionFunc(1, t.link, "allowed")
+            return
+        end
+
+        if CharSaved.dispositions[itemId] == ITEM_DISPOSITION_DISALLOWED then
+            completionFunc(0, t.link, "disallowed")
             return
         end
 
@@ -1569,110 +1473,68 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
 end
 
 --[[
-================================================================================
-
-END Table of Usable Items (see the Mountaineer document)
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  END Table of Usable Items (see the Mountaineer document)                    @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
-
--- This function is used to decide on an item that we assume has already undergone the mountaineersCanUseNonLootedItem() test.
-local function itemIsAllowed(itemId, evaluationFunction)
-
-    if itemId == nil or itemId == 0 then return true end
-    --print("itemIsAllowed("..itemId..")")
-
-    itemId = tostring(itemId)
-    initSavedVarsIfNec()
-
-    -- Anything on the good list overrides anything on the bad list because the good list is only set by the player.
-    if AcctSaved.goodItems[itemId] then
-        --print("On the nice list")
-        return true
-    end
-
-    -- If it's on the bad list, it's bad.
-    if AcctSaved.badItems[itemId] then
-        --print("On the naughty list")
-        return false
-    end
-
-    if evaluationFunction then
-        -- If there's an additional evaluation function, use that.
-        local ret = evaluationFunction(itemId)
-        --print("Evaluation function returned ", ret)
-        return ret
-    else
-        -- If no additional evaluation is required, then assume it's allowed.
-        --print("Fell through to return true")
-        return true
-    end
-
-end
 
 local function isItemAllowed(itemId)
 
     if not itemId then return false, "no item id" end
+    itemId = tostring(itemId)
 
     initSavedVarsIfNec()
 
     -- If there's an item in the slot, check it.
     local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemId)
     local dispo = CharSaved.dispositions[itemId]
-    if rarity == 0 then dispo = ITEM_DISPOSITION_LOOTED end
+    if rarity == 0 and not dispo then dispo = ITEM_DISPOSITION_LOOTED end
 
-    if AcctSaved.goodItems and AcctSaved.goodItems[itemId] then
-        -- All good (legacy data)
+    if gDefaultAllowedItems[itemId] then
+
+        return true, gDefaultAllowedItems[itemId]
+
+    elseif gDefaultDisallowedItems[itemId] then
+
+        return false, gDefaultAllowedItems[itemId]
+
     elseif dispo == ITEM_DISPOSITION_ALLOWED then
-        -- All good
-    elseif AcctSaved.badItems and AcctSaved.badItems[itemId] then
-        return false, "" -- (legacy data)
+
+        return true, "allowed"
+
     elseif dispo == ITEM_DISPOSITION_DISALLOWED then
+
         return false, "disallowed"
+
     elseif dispo == ITEM_DISPOSITION_TRAILBLAZER then
+
         if not CharSaved.isTrailblazer then
             return false, "purchased"
         end
+
     elseif dispo == ITEM_DISPOSITION_PURCHASED then
+
         return false, "purchased"
+
     elseif dispo == ITEM_DISPOSITION_LOOTED then
+
         if not CharSaved.isLucky then
             return false, "looted"
         end
+
     elseif dispo == ITEM_DISPOSITION_REWARDED then
+
         return false, "quest reward"
+
     end
 
-    return true
+    return true, "no disposition"
 
 end
 
 local function checkInventory()
-    --  0 = ammo
-    --  1 = head
-    --  2 = neck
-    --  3 = shoulder
-    --  4 = shirt
-    --  5 = chest
-    --  6 = waist
-    --  7 = legs
-    --  8 = feet
-    --  9 = wrist
-    -- 10 = hands
-    -- 11 = finger 1
-    -- 12 = finger 2
-    -- 13 = trinket 1
-    -- 14 = trinket 2
-    -- 15 = back
-    -- 16 = main hand
-    -- 17 = off hand
-    -- 18 = ranged
-    -- 19 = tabard
-    -- 20 = first bag (the rightmost one)
-    -- 21 = second bag
-    -- 22 = third bag
-    -- 23 = fourth bag (the leftmost one)
-
     local warningCount = 0
     for slot = 0, 18 do
         local itemId = GetInventoryItemID('player', slot)
@@ -1702,11 +1564,11 @@ local function checkInventory()
 end
 
 --[[
-================================================================================
-
-Parsing command line
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  Parsing command line                                                        @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 SLASH_MOUNTAINEER1, SLASH_MOUNTAINEER2 = '/mountaineer', '/mtn'
@@ -1777,15 +1639,28 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2, match = str:find("^verbose *(%a*)$")
+    if p1 then
+        match = string.lower(match)
+        if match == 'on' then
+            setVerbose(true)
+        elseif match == 'off' then
+            setVerbose(false)
+        else
+            setVerbose(nil)
+        end
+        return
+    end
+
     p1, p2, arg1 = str:find("^check +(.*)$")
     if p1 and arg1 then
         itemCanBeUsed(arg1, nil, nil, nil, function(ok, link, why)
             if ok == 0 then
                 if not link then link = "That item" end
-                printWarning(link .. " cannot be used (" .. why .. ")")
+                printWarning(link .. " is not allowed (" .. why .. ")")
             elseif ok == 1 then
                 if not link then link = "That item" end
-                printGood(link .. " can be used (" .. why .. ")")
+                printGood(link .. " is allowed (" .. why .. ")")
             else
                 if link then
                     printInfo(link .. ": " .. why)
@@ -1912,61 +1787,64 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     end
 
     print(colorText('ffff00', "/mtn lucky/hardtack"))
-    print("     Switches you to lucky or hardtack mountaineer mode.")
+    print("   Switches you to lucky or hardtack mountaineer mode.")
 
     print(colorText('ffff00', "/mtn trailblazer/lazy"))
-    print("     Toggles the trailblazer and/or the lazy bastard challenge.")
+    print("   Toggles the trailblazer and/or the lazy bastard challenge.")
 
     print(colorText('ffff00', "/mtn check"))
-    print("     Checks your skills and currently equipped items for conformance.")
+    print("   Checks your skills and currently equipped items for conformance.")
 
     print(colorText('ffff00', "/mtn made weapon"))
-    print("     Toggles whether or not you made your self-crafted weapon.")
+    print("   Toggles whether or not you made your self-crafted weapon.")
 
     if CharSaved.madeWeapon then
         -- Nothing to print.
     else
         print(colorText('ffff00', "/mtn spells"))
-        print("     Lists the abilities you may use before making your self-crafted weapon.")
+        print("   Lists the abilities you may use before making your self-crafted weapon.")
     end
 
     print(colorText('ffff00', "/mtn version"))
-    print("     Shows the current version of the addon.")
+    print("   Shows the current version of the addon.")
+
+    print(colorText('ffff00', "/mtn verbose [on/off]"))
+    print("   Turns verbose mode on or off. When on, you will see all evaluation messages when receiving items. When off, all \"item is allowed\" messages will be suppressed, as well as \"item is disallowed\" for gray items.")
 
     print(colorText('ffff00', "/mtn sound [on/off]"))
-    print("     Turns addon sounds on or off.")
+    print("   Turns addon sounds on or off.")
 
     print(colorText('ffff00', "/mtn minimap [on/off]"))
-    print("     Turns the minimap on or off.")
+    print("   Turns the minimap on or off.")
 
     print(colorText('ffff00', "/mtn check {id/name/link}"))
-    print("     Checks an item to see if you can use it.")
+    print("   Checks an item to see if you can use it.")
 
     print(colorText('ffff00', "/mtn allow {id/name/link}"))
-    print("     Allows you to use the item you specify, either by id# or name or link.")
-    print("     Example:  \"/mtn allow 7005\",  \"/mtn allow Skinning Knife\"")
+    print("   Allows you to use the item you specify, either by id# or name or link.")
+    print("   Example:  \"/mtn allow 7005\",  \"/mtn allow Skinning Knife\"")
 
     print(colorText('ffff00', "/mtn disallow {id/name/link}"))
-    print("     Disallows the item you specify, either by id# or name or link.")
-    print("     Example:  \"/mtn disallow 7005\",  \"/mtn disallow Skinning Knife\"")
+    print("   Disallows the item you specify, either by id# or name or link.")
+    print("   Example:  \"/mtn disallow 7005\",  \"/mtn disallow Skinning Knife\"")
 
     print(colorText('ffff00', "/mtn forget {id/name/link}"))
-    print("     Forgets any allow/disallow that might be set for the item you specify, either by id# or name or link.")
-    print("     This will force the item to be re-evaluated then next time you loot or buy it.")
-    print("     Example:  \"/mtn forget 7005\",  \"/mtn forget Skinning Knife\"")
+    print("   Forgets any allow/disallow that might be set for the item you specify, either by id# or name or link.")
+    print("   This will force the item to be re-evaluated then next time you loot or buy it.")
+    print("   Example:  \"/mtn forget 7005\",  \"/mtn forget Skinning Knife\"")
 
     print(colorText('ffff00', "/mtn reset everything i really mean it"))
-    print("     Resets all allowed/disallowed lists to their default state.")
-    print("     This will lose all your custom allows & disallows and cannot be undone, so use with caution.")
+    print("   Resets all allowed/disallowed lists to their default state.")
+    print("   This will lose all your custom allows & disallows and cannot be undone, so use with caution.")
 
 end
 
 --[[
-================================================================================
-
-Event processing
-
-================================================================================
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@                                                                              @@
+@@  Event processing                                                            @@
+@@                                                                              @@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
 local EventFrame = CreateFrame('frame', 'EventFrame')
@@ -2021,6 +1899,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         if CharSaved.isTrailblazer  == nil then CharSaved.isTrailblazer = false         end
         if CharSaved.madeWeapon     == nil then CharSaved.madeWeapon    = (level >= 10) end
         if CharSaved.dispositions   == nil then CharSaved.dispositions  = {}            end
+        if AcctSaved.verbose        == nil then AcctSaved.verbose       = true          end
 
         -- MSL 2022-08-07
         -- I've expanded Mountaineer to include all classes except DKs.
@@ -2062,13 +1941,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         --MainMenuBarLeftEndCap:Hide()
         --MainMenuBarRightEndCap:Hide()
 
-        -- Make sure that every default good item is on the current good list and off the bad list.
-
-        for k,v in pairs(gDefaultGoodItems) do
-            AcctSaved.goodItems[k] = v
-            AcctSaved.badItems[k] = nil
-        end
-
         -- If the character is just starting out
         if level == 1 and xp < 200 then
 
@@ -2078,20 +1950,25 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Do the following after a delay of a few seconds.
             C_Timer.After(seconds, function()
 
-                -- Look at each weapon slot (16=mainhand, 17=offhand, 18=ranged)...
-                -- (Prior to 2022-12-13, all items were stripped. Now it's just weapons.)
-                local nUnequipped = 0
-                for slot = 16, 18 do
+                local nUnequipped = 0;
+
+                for slot = 0, 18 do
                     local itemId = GetInventoryItemID("player", slot)
-                    -- If there's an item in the slot, the player must remove it.
                     if itemId ~= nil and itemId ~= 0 then
                         local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
                         --print (" slot=", slot, " itemId=", itemId, " name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice)
-                        allowOrDisallowItem(itemId, false)
-                        PickupInventoryItem(slot)
-                        PutItemInBackpack()
-                        printInfo("Unequipped " .. link)
-                        nUnequipped = nUnequipped + 1
+                        if slot == SLOT_MAIN_HAND or slot == SLOT_OFF_HAND or slot == SLOT_RANGED or slot == SLOT_AMMO then
+                            -- The player must remove any items in the lower slots.
+                            allowOrDisallowItem(itemId, false)
+                            PickupInventoryItem(slot)
+                            PutItemInBackpack()
+                            printInfo("Unequipped " .. link .. " (" .. itemId .. ")")
+                            nUnequipped = nUnequipped + 1
+                        else
+                            -- The player can keep anything in the upper slots.
+                            -- We mark them as allowed to override older versions of the addon that blacklisted them across all characters in the account.
+                            allowOrDisallowItem(itemId, true)
+                        end
                     end
                 end
 
@@ -2117,23 +1994,23 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     elseif event == 'QUEST_DETAIL' or event == 'QUEST_PROGRESS' or event == 'QUEST_COMPLETE' then
 
-        gQuestInteraction = true
-        --=--printInfo("Quest interaction begun with " .. tostring(gLastUnitTargeted))
+        gLastQuestUnitTargeted = gLastUnitTargeted
+        gLastMerchantUnitTargeted = nil
+        printInfo("Quest interaction begun with " .. tostring(gLastUnitTargeted))
 
     elseif event == 'QUEST_FINISHED' then
 
-        gQuestInteraction = false
-        --=--printInfo("Quest interaction ended")
+        printInfo("Quest interaction ended")
 
     elseif event == 'MERCHANT_SHOW' then
 
-        gMerchantInteraction = true
-        --=--printInfo("Merchant interaction begun with " .. tostring(gLastUnitTargeted))
+        gLastMerchantUnitTargeted = gLastUnitTargeted
+        gLastQuestUnitTargeted = nil
+        printInfo("Merchant interaction begun with " .. tostring(gLastUnitTargeted))
 
     elseif event == 'MERCHANT_CLOSED' then
 
-        gMerchantInteraction = false
-        --=--printInfo("Merchant interaction ended")
+        printInfo("Merchant interaction ended")
 
     elseif event == 'LOOT_READY' then
 
@@ -2168,10 +2045,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             --itemCanBeUsed(arg1, unitId, nil, nil, function(ok, link, why)
             --    if ok == 0 then
             --        if not link then link = "That item" end
-            --        printWarning(link .. " cannot be used: " .. why)
+            --        printWarning(link .. " is not allowed: " .. why)
             --    elseif ok == 1 then
             --        if not link then link = "That item" end
-            --        printGood(link .. " can be used: " .. why)
+            --        printGood(link .. " is allowed: " .. why)
             --    else
             --        if link then
             --            printInfo(link .. ": " .. why)
@@ -2243,7 +2120,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if unitType == 'Creature' then
                 local _, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", guid)
                 gLastUnitTargeted = unitId
-                --printInfo("Targeting NPC " .. name .. " (" .. unitId .. ")")
+                print("Targeting NPC", unitId, name)
             elseif unitType == 'Player' then
                 --printInfo("Targeting player " .. name .. " (" .. guid .. ")")
             else
@@ -2269,11 +2146,14 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             -- Look at each character slot...
             for slot = 0, 18 do
                 local itemId = GetInventoryItemID("player", slot)
-                -- If there's an item in the slot, check it.
-                if not itemIsAllowed(itemId) then
-                    nBadItems = nBadItems + 1
-                    name, link = GetItemInfo(itemId)
-                    printWarning("Unequip " .. link)
+                if itemId then
+                    -- If there's an item in the slot, check it.
+                    itemId = tostring(itemId)
+                    if not isItemAllowed(itemId) then
+                        nBadItems = nBadItems + 1
+                        name, link = GetItemInfo(itemId)
+                        printWarning("Unequip " .. link)
+                    end
                 end
             end
 
@@ -2384,13 +2264,17 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if not isEmpty and slot >= 0 and slot <= 18 then
 
                 local itemId = GetInventoryItemID("player", slot)
-
-                if not itemIsAllowed(itemId) then
+                if itemId then
                     local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
-                    local msg = "You cannot equip " .. link
-                    playSound(ERROR_SOUND_FILE)
-                    printWarning(msg)
-                    flashWarning(msg)
+                    local allowed, reason = isItemAllowed(itemId)
+                    print("Equipping", name, itemId, allowed, reason)
+
+                    if not allowed then
+                        local msg = "You cannot equip " .. link
+                        playSound(ERROR_SOUND_FILE)
+                        printWarning(msg)
+                        flashWarning(msg)
+                    end
                 end
 
             end
@@ -2417,18 +2301,18 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                     if unitType == 'GameObject' then
                         -- We don't know 100% for sure, but it's very likely this item is looted from a chest or something similar, so we allow it.
                         if tonumber(unitId) == 35591 then
-                            printGood(itemLink .. " can be used (via fishing)")
+                            printAllowedItem(itemLink, "via fishing")
                         else
-                            printGood(itemLink .. " can be used (via container)")
+                            printAllowedItem(itemLink, "via container")
                         end
                     else
                         itemCanBeUsed(itemId, gLastUnitTargeted, nil, nil, function(ok, link, why)
                             if ok == 0 then
                                 if not link then link = "That item" end
-                                printWarning(link .. " cannot be used (" .. why .. ")")
+                                printDisallowedItem(itemLink, why)
                             elseif ok == 1 then
                                 if not link then link = "That item" end
-                                printGood(link .. " can be used (" .. why .. ")")
+                                printAllowedItem(itemLink, why)
                             else
                                 if link then
                                     printInfo(link .. ": " .. why)
@@ -2445,19 +2329,14 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 local _, _, itemLink = text:find(L['You receive item'] .. ": (.*)%.")
                 if itemLink ~= nil then
                     matched = true
-                    local questSource, merchantSource = nil, nil
-                    if gQuestInteraction then
-                        questSource = gLastUnitTargeted
-                    elseif gMerchantInteraction then
-                        merchantSource = gLastUnitTargeted
-                    end
-                    itemCanBeUsed(itemId, nil, questSource, merchantSource, function(ok, link, why)
+                    print(itemLink, gLastQuestUnitTargeted, gLastMerchantUnitTargeted)
+                    itemCanBeUsed(itemId, nil, gLastQuestUnitTargeted, gLastMerchantUnitTargeted, function(ok, link, why)
                         if ok == 0 then
                             if not link then link = "That item" end
-                            printWarning(link .. " cannot be used (" .. why .. ")")
+                            printDisallowedItem(itemLink, why)
                         elseif ok == 1 then
                             if not link then link = "That item" end
-                            printGood(link .. " can be used (" .. why .. ")")
+                            printAllowedItem(itemLink, why)
                         else
                             if link then
                                 printInfo(link .. ": " .. why)
