@@ -238,6 +238,13 @@ local function getContainerItemInfo(bag, slot)
     if gameVersion() < 3 then return GetContainerItemInfo(bag, slot) else return C_Container.GetContainerItemInfo(bag, slot) end
 end
 
+local function getInventoryItemID(unit, slot)
+    local itemId = GetInventoryItemID(unit, slot)
+    if itemId == 0 then itemId = nil end
+    if itemId and type(itemId) ~= 'string' then itemId = tostring(itemId) end
+    return itemId
+end
+
 local function parseItemLink(link)
     -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
     local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
@@ -252,7 +259,7 @@ end
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
--- These will need to be localized if not enUS.
+-- Localization strings. The string after each '=' sign will need to be changed if not US English.
 local L = {
     ["You receive loot"] = "You receive loot",
     ["You receive item"] = "You receive item",
@@ -339,13 +346,16 @@ local gDefaultDisallowedItems = {
     ['34582'] = "vendor-only", -- Mysterious Shell
 }
 
-local ITEM_DISPOSITION_ALLOWED      = 1 -- /mtn allow, items fished, taken from chests, and self-made
-local ITEM_DISPOSITION_DISALLOWED   = 2 -- /mtn disallow
-local ITEM_DISPOSITION_LOOTED       = 3 -- items looted from mobs
-local ITEM_DISPOSITION_REWARDED     = 4 -- items given as quest rewards
-local ITEM_DISPOSITION_PURCHASED    = 5 -- items purchased from a vendor
-local ITEM_DISPOSITION_TRAILBLAZER  = 6 -- items purchased from an approved trailblazer vendor
-local ITEM_DISPOSITION_RARE_MOB     = 7 -- items looted from rare mobs
+local ITEM_DISPOSITION_ALLOWED      =  1    -- /mtn allow, items fished, taken from chests, and self-made
+local ITEM_DISPOSITION_DISALLOWED   =  2    -- /mtn disallow
+local ITEM_DISPOSITION_LOOTED       =  3    -- items looted from mobs
+local ITEM_DISPOSITION_REWARDED     =  4    -- items given as quest rewards
+local ITEM_DISPOSITION_PURCHASED    =  5    -- items purchased from a vendor
+local ITEM_DISPOSITION_TRAILBLAZER  =  6    -- items purchased from an approved trailblazer vendor
+local ITEM_DISPOSITION_RARE_MOB     =  7    -- items looted from rare mobs
+local ITEM_DISPOSITION_FISHING      =  8    -- items looted via fishing
+local ITEM_DISPOSITION_CONTAINER    =  9    -- items looted from a container (chest, trunk)
+local ITEM_DISPOSITION_SELF_MADE    = 10    -- items created by the player
 
 local functionQueue = Queue.new()
 
@@ -369,6 +379,7 @@ local function initSavedVarsIfNec(force)
 end
 
 local function printAllowedItem(itemLink, why)
+    --itemLink = itemLink or 'Unknown item'
     if AcctSaved.verbose then
         if why and why ~= '' then
             printGood(itemLink .. " is allowed (" .. why .. ")")
@@ -379,6 +390,7 @@ local function printAllowedItem(itemLink, why)
 end
 
 local function printDisallowedItem(itemLink, why)
+    --itemLink = itemLink or 'Unknown item'
     local show = true
     if not AcctSaved.verbose then
         local itemId = parseItemLink(itemLink)
@@ -507,7 +519,7 @@ end
 local function dumpInventory(unit)
     unit = unit or 'player'
     for slot = 0, 23 do -- need to iterate through every slot, this does not include items in bag I think, need to get the ID's for these from the emulator
-        local itemId = GetInventoryItemID(unit, slot)
+        local itemId = getInventoryItemID(unit, slot)
         local link = GetInventoryItemLink(unit, slot)
         if link then
             print(slot, itemId, link, printableLink(link))
@@ -623,9 +635,6 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
             if userOverride then printWarning(link .. " (" .. itemId .. ") is disallowed by default and cannot be changed") end
             return false
         end
-        if userOverride then
-            printWarning(link .. " (" .. itemId .. ") is always allowed by default")
-        end
         CharSaved.dispositions[itemId] = nil
         if userOverride then printInfo(link .. " (" .. itemId .. ") is now forgotten") end
 
@@ -637,6 +646,7 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
         end
         CharSaved.dispositions[itemId] = ITEM_DISPOSITION_ALLOWED
         if userOverride then printInfo(link .. " (" .. itemId .. ") is now allowed") end
+        --print('CharSaved.dispositions', itemId, 'ALLOWED')
 
     else
 
@@ -646,6 +656,7 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
         end
         CharSaved.dispositions[itemId] = ITEM_DISPOSITION_DISALLOWED
         if userOverride then printInfo(link .. " (" .. itemId .. ") is now disallowed") end
+        --print('CharSaved.dispositions', itemId, 'DISALLOWED')
 
     end
 
@@ -857,6 +868,14 @@ local function itemIsUncraftable(t)
 
 end
 
+local function itemIsARealWeapon(t)
+
+    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+
+    return (t.classId == Enum.ItemClass.Weapon and t.subclassId ~= Enum.ItemWeaponSubclass.FishingPole)
+
+end
+
 local function itemIsAQuestItem(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
@@ -869,7 +888,9 @@ local function itemIsFoodOrDrink(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    return (t.classId == 0 and t.subclassId == 5)
+    print('itemIsFoodOrDrink', t.link, t.itemId, 'class', t.classId, 'subclass', t.subclassId, '==>', (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5)))
+
+    return (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5))
 
 end
 
@@ -1128,13 +1149,269 @@ end
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
-local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchasedFromUnitId, completionFunc)
+local ITEM_SOURCE_UNKNOWN       = nil
+local ITEM_SOURCE_LOOTED        = 1
+local ITEM_SOURCE_REWARDED      = 2
+local ITEM_SOURCE_PURCHASED     = 3
+local ITEM_SOURCE_GAME_OBJECT   = 4
+local ITEM_SOURCE_SELF_MADE     = 5
+
+local function itemStatus(t, source, sourceId)
+
+    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+
+    -- If the item is already on the allowed or disallowed lists, we don't need to use any logic.
+    if gDefaultAllowedItems[itemId] then
+        return 1, t.link, gDefaultAllowedItems[t.itemId]
+    end
+    if gDefaultDisallowedItems[itemId] then
+        return 0, t.link, gDefaultDisallowedItems[t.itemId]
+    end
+
+    -- Get the existing disposition for the item, or nil if there is none.
+    local dispo = CharSaved.dispositions[t.itemId]
+
+    --print('itemStatus:', t.link, t.itemId, t.rarity, source, sourceId, dispo)
+
+    if dispo then
+
+        if dispo == ITEM_DISPOSITION_ALLOWED then
+            return 1, t.link, "allowed item"
+        end
+
+        if dispo == ITEM_DISPOSITION_DISALLOWED then
+            return 0, t.link, "disallowed item"
+        end
+
+        if dispo == ITEM_DISPOSITION_FISHING then
+            return 1, t.link, "via fishing"
+        end
+
+        if dispo == ITEM_DISPOSITION_CONTAINER then
+            return 1, t.link, "via container"
+        end
+
+        if not source then
+            if dispo == ITEM_DISPOSITION_FISHING    or dispo == ITEM_DISPOSITION_CONTAINER    then  source = ITEM_SOURCE_GAME_OBJECT   end
+            if dispo == ITEM_DISPOSITION_LOOTED     or dispo == ITEM_DISPOSITION_RARE_MOB     then  source = ITEM_SOURCE_LOOTED        end
+            if dispo == ITEM_DISPOSITION_PURCHASED  or dispo == ITEM_DISPOSITION_TRAILBLAZER  then  source = ITEM_SOURCE_LOOTED        end
+            if dispo == ITEM_DISPOSITION_REWARDED                                             then  source = ITEM_SOURCE_REWARDED      end
+            if dispo == ITEM_DISPOSITION_SELF_MADE                                            then  source = ITEM_SOURCE_SELF_MADE     end
+        end
+
+    end
+
+    if not source then
+
+        if itemIsARealWeapon(t) and not CharSaved.madeWeapon then
+            return 0, t.link, "cannot use weapons until crafting one of your own"
+        end
+
+        if itemIsGray(t) then
+            -- Grey items are always looted. You can't buy them or get them as quest rewards.
+            if CharSaved.isLucky then
+                return 1, t.link, "lucky mountaineers can use any looted gray quality items"
+            else
+                return 0, t.link, "hardtack mountaineers cannot use looted gray quality items"
+            end
+        end
+
+        if itemIsReagentOrUsableForAProfession(t) then
+            return 1, t.link, "reagents & items usable by a profession are always allowed"
+        end
+
+        if itemIsADrink(t) then
+            return 1, t.link, "drinks are always allowed"
+        end
+
+        if itemIsAQuestItem(t) then
+            return 1, t.link, "quest items are always allowed"
+        end
+
+        if itemIsFoodOrDrink(t) then
+            return 2, t.link, "food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed"
+        end
+
+        if itemIsUncraftable(t) then
+            return 2, t.link, "uncraftable items can be looted or accepted as quest rewards, but cannot be purchased"
+        end
+
+        if itemIsRare(t) then
+            return 2, t.link, "rare items can be looted, but cannot be purchased or accepted as quest rewards"
+        end
+
+        if itemIsASpecialContainer(t) then
+            return 2, t.link, "special containers can be accepted as quest rewards, but cannot be purchased or looted"
+        end
+
+        if itemIsFromClassQuest(t) then
+            return 2, t.link, "class quest rewards can be accepted"
+        end
+
+        if CharSaved.isLucky then
+            if CharSaved.isTrailblazer then
+                return 2, t.link, "lucky trailblazer mountaineers can only use this item if it is self-made, fished, looted, or purchased from an open-world vendor"
+            else
+                return 2, t.link, "lucky mountaineers can only use this item if it is self-made, fished, or looted"
+            end
+        else
+            if CharSaved.isTrailblazer then
+                return 2, t.link, "hardtack trailblazer mountaineers can only use this item if it is self-made, fished, looted from a container or a rare mob, or purchased from an open-world vendor"
+            else
+                return 2, t.link, "hardtack mountaineers can only use this item if it is self-made, fished, or looted from a container or a rare mob"
+            end
+        end
+
+    else
+
+        -- Setting CharSaved.dispositions[t.itemId] to nil means that there is
+        -- enough information in the item intrinsically to determine its
+        -- disposition.
+
+        if itemIsARealWeapon(t) and not CharSaved.madeWeapon then
+            CharSaved.dispositions[t.itemId] = nil
+            return 0, t.link, "cannot use weapons until crafting one of your own"
+        end
+
+        if itemIsReagentOrUsableForAProfession(t) then
+            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+            CharSaved.dispositions[t.itemId] = nil
+            return 1, t.link, "reagent / profession item"
+        end
+
+        if itemIsADrink(t) then
+            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+            CharSaved.dispositions[t.itemId] = nil
+            return 1, t.link, "drink"
+        end
+
+        if itemIsAQuestItem(t) then
+            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+            CharSaved.dispositions[t.itemId] = nil
+            return 1, t.link, "quest item"
+        end
+
+        if source == ITEM_SOURCE_SELF_MADE then
+
+            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_SELF_MADE
+            return 1, t.link, "self-made"
+
+        end
+
+        if source == ITEM_SOURCE_GAME_OBJECT then
+
+            if dispo == ITEM_DISPOSITION_FISHING or tonumber(sourceId) == 35591 then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_FISHING
+                return 1, t.link, "via fishing"
+            else
+                -- We don't know 100% for sure, but it's very likely this item is looted from a chest or something similar, so we allow it.
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
+                return 1, t.link, "via container"
+            end
+
+        end
+
+        if source == ITEM_SOURCE_PURCHASED then
+
+            if CharSaved.isTrailblazer and (dispo == ITEM_DISPOSITION_TRAILBLAZER or unitIsOpenWorldVendor(sourceId)) then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_TRAILBLAZER
+                return 1, t.link, "trailblazer approved vendor"
+            end
+
+            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_PURCHASED
+            return 0, t.link, "vendor"
+
+        end
+
+        if source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED then
+
+            if itemIsFoodOrDrink(t) then
+                if isLooted then
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                else
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+                end
+                return 1, t.link, "food"
+            end
+
+            if itemIsUncraftable(t) then
+                if isLooted then
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                else
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+                end
+                return 1, t.link, "uncraftable item"
+            end
+
+        end
+
+        if source == ITEM_SOURCE_LOOTED then
+
+            if CharSaved.isLucky then
+                if itemIsANormalBag(t) then
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                    return 1, t.link, "THE BLESSED RUN!"
+                end
+                if t.rarity > 0 then
+                    -- Don't save disposition if the item is gray. We know they are looted, and there's no need to pollute CharSaved with all the grays.
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                end
+                return 1, t.link, "looted"
+            end
+
+            if itemIsRare(t) then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                return 1, t.link, "rare item"
+            end
+
+            if dispo == ITEM_DISPOSITION_RARE_MOB or unitIsRare(sourceId) then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_RARE_MOB
+                return 1, t.link, "looted from rare mob"
+            end
+
+            if t.rarity > 0 then
+                -- Don't save disposition if the item is gray. We know they are looted, and there's no need to pollute CharSaved with all the grays.
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+            end
+            return 0, t.link, "looted"
+
+        end
+
+        if source == ITEM_SOURCE_REWARDED then
+
+            if itemIsASpecialContainer(t) then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+                return 1, t.link, "special container"
+            end
+
+            if itemIsFromClassQuest(t) then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+                return 1, t.link, "class quest reward"
+            end
+
+            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+            return 0, t.link, "quest reward"
+
+        end
+
+        CharSaved.dispositions[t.itemId] = nil
+        return 0, t.link, "failed all tests"
+
+    end
+
+end
+
+local function itemCanBeUsed(itemId, source, sourceId, completionFunc)
 
     itemId = itemId or ''
     if itemId == '' or itemId == '0' then
-        completionFunc(false, "", "no item id")
-        return
+        if completionFunc then
+            return completionFunc(0, "", "no item id")
+        else
+            return 0, "", "no item id"
+        end
     end
+    itemId = tostring(itemId)
 
     --if not string.find(itemId, "^%d+$") then
     --    print("ITEM -> " .. itemId)
@@ -1146,7 +1423,17 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
     -- call doesn't have to call GetItemInfo, which gets its data from the server. Presumably the
     -- game is smart enough to cache it, but who knows.
     -- https://wowpedia.fandom.com/wiki/API_GetItemInfo
-    GetItemInfo(itemId)
+    local t = {}
+    t.itemId = itemId
+    t.name, t.link, t.rarity, t.level, t.minLevel, t.type, t.subType, t.stackCount, t.equipLoc, t.texture, t.sellPrice, t.classId, t.subclassId, t.bindType, t.expacId, t.setId, t.isCraftingReagent = GetItemInfo(itemId)
+
+    -- If we got information for the item, then return the item's status immediately.
+    if not completionFunc then
+        return itemStatus(t, source, sourceId)
+    end
+
+    -- Sometimes we don't get anything back from GetitemInfo() because it needs time to retrieve it from the server.
+    -- In that case, we queue up the completion function to be executed later.
 
     -- Do the following after a short delay as a last resort in case GET_ITEM_INFO_RECEIVED never fires.
     C_Timer.After(.25, function()
@@ -1157,264 +1444,27 @@ local function itemCanBeUsed(itemId, lootedFromUnitId, rewardedByUnitId, purchas
     end)
 
     Queue.push(functionQueue, function ()
-
-        local t = {}
-        t.itemId = itemId
-        t.name, t.link, t.rarity, t.level, t.minLevel, t.type, t.subType, t.stackCount, t.equipLoc, t.texture, t.sellPrice, t.classId, t.subclassId, t.bindType, t.expacId, t.setId, t.isCraftingReagent = GetItemInfo(itemId)
-        --=--print("HI THERE: " .. ut.tfmt(t))
-
-        --local itemInfo = {itemId, GetItemInfo(itemId)}
-        --local id, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = unpack(itemInfo)
-
-        -- If the item is already on the allowed list, we don't need to use any logic.
-        if gDefaultAllowedItems[itemId] then
-            completionFunc(1, t.link, gDefaultAllowedItems[itemId], link)
-            return
-        end
-
-        -- Convenience booleans that make the code below easier to read.
-        local isLooted    = lootedFromUnitId    ~= nil
-        local isPurchased = purchasedFromUnitId ~= nil
-        local isRewarded  = rewardedByUnitId    ~= nil
-
-        -- Make sure there is ONE AND ONLY ONE source.
-        local                 sourceCount = 0;
-        if isLooted     then  sourceCount = sourceCount + 1  end
-        if isPurchased  then  sourceCount = sourceCount + 1  end
-        if isRewarded   then  sourceCount = sourceCount + 1  end
-        if sourceCount > 1 then
-            completionFunc(0, t.link, sourceCount .. " item sources were specified")
-            return
-        end
-
-        -- Get the existing disposition for the item, or nil if there is none.
-        local dispo = CharSaved.dispositions[itemId]
-        if dispo ~= nil then
-
-            if dispo == ITEM_DISPOSITION_ALLOWED then
-                completionFunc(1, t.link, "allowed")
-                return
-            end
-
-            if dispo == ITEM_DISPOSITION_DISALLOWED then
-                completionFunc(0, t.link, "disallowed")
-                return
-            end
-
-            if sourceCount == 0 and dispo then
-                isLooted    = dispo == ITEM_DISPOSITION_LOOTED     or dispo == ITEM_DISPOSITION_RARE_MOB
-                isPurchased = dispo == ITEM_DISPOSITION_PURCHASED  or dispo == ITEM_DISPOSITION_TRAILBLAZER
-                isRewarded  = dispo == ITEM_DISPOSITION_REWARDED
-
-                if isLooted     then  sourceCount = sourceCount + 1  end
-                if isPurchased  then  sourceCount = sourceCount + 1  end
-                if isRewarded   then  sourceCount = sourceCount + 1  end
-            end
-
-        end
-
-        -- Setting CharSaved.dispositions[t.itemId] to nil means that there is
-        -- enough information in the item intrinsically to determine its
-        -- disposition.
-
-        if sourceCount == 0 then
-
-            -- We don't know where the item came from.
-
-            if itemIsReagentOrUsableForAProfession(t) then
-                completionFunc(1, t.link, "reagents & items usable by a profession are always allowed")
-                return
-            end
-
-            if itemIsADrink(t) then
-                completionFunc(1, t.link, "drinks are always allowed")
-                return
-            end
-
-            if itemIsAQuestItem(t) then
-                completionFunc(1, t.link, "quest items are always allowed")
-                return
-            end
-
-            if itemIsFoodOrDrink(t) then
-                completionFunc(2, t.link, "food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed")
-                return
-            end
-
-            if itemIsUncraftable(t) then
-                completionFunc(2, t.link, "uncraftable items can be looted or accepted as quest rewards, but cannot be purchased")
-                return
-            end
-
-            if itemIsRare(t) then
-                completionFunc(2, t.link, "rare items can be looted, but cannot be purchased or accepted as quest rewards")
-                return
-            end
-
-            if itemIsGray(t) == 0 then
-                -- Grey items are always looted. You can't buy them or get them as quest rewards.
-                if CharSaved.isLucky then
-                    completionFunc(1, t.link, "lucky mountaineers can use any looted gray quality items")
-                else
-                    completionFunc(0, t.link, "hardtack mountaineers cannot use looted gray quality items")
-                end
-                return
-            end
-
-            if itemIsASpecialContainer(t) then
-                completionFunc(2, t.link, "special containers can be accepted as quest rewards, but cannot be purchased or looted")
-                return
-            end
-
-            if itemIsFromClassQuest(t) then
-                completionFunc(2, t.link, "class quest rewards can be accepted")
-                return
-            end
-
-            if CharSaved.isLucky then
-                if CharSaved.isTrailblazer then
-                    completionFunc(2, t.link, "lucky trailblazer mountaineers can only use this item if it is self-made, fished, looted, or purchased from an open-world vendor")
-                else
-                    completionFunc(2, t.link, "lucky mountaineers can only use this item if it is self-made, fished, or looted")
-                end
-                return
-            else
-                if CharSaved.isTrailblazer then
-                    completionFunc(2, t.link, "hardtack trailblazer mountaineers can only use this item if it is self-made, fished, looted from a container or a rare mob, or purchased from an open-world vendor")
-                else
-                    completionFunc(2, t.link, "hardtack mountaineers can only use this item if it is self-made, fished, or looted from a container or a rare mob")
-                end
-                return
-            end
-
-        else
-
-            -- We know where the item came from.
-
-            if itemIsReagentOrUsableForAProfession(t) then
-                completionFunc(1, t.link, "reagent / profession item")
-                -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
-                CharSaved.dispositions[t.itemId] = nil
-                return
-            end
-
-            if itemIsADrink(t) then
-                completionFunc(1, t.link, "drink")
-                -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
-                CharSaved.dispositions[t.itemId] = nil
-                return
-            end
-
-            if itemIsAQuestItem(t) then
-                completionFunc(1, t.link, "quest item")
-                -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
-                CharSaved.dispositions[t.itemId] = nil
-                return
-            end
-
-            if isPurchased then
-
-                if CharSaved.isTrailblazer and (dispo == ITEM_DISPOSITION_TRAILBLAZER or unitIsOpenWorldVendor(purchasedFromUnitId)) then
-                    completionFunc(1, t.link, "trailblazer approved vendor")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_TRAILBLAZER
-                    return
-                end
-
-                completionFunc(0, t.link, "vendor")
-                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_PURCHASED
-                return
-
-            end
-
-            if isLooted or isRewarded then
-
-                if itemIsFoodOrDrink(t) then
-                    completionFunc(1, t.link, "food")
-                    if isLooted then
-                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                    else
-                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                    end
-                    return
-                end
-
-                if itemIsUncraftable(t) then
-                    completionFunc(1, t.link, "uncraftable item")
-                    if isLooted then
-                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                    else
-                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                    end
-                    return
-                end
-
-            end
-
-            if isLooted then
-
-                if CharSaved.isLucky then
-                    if itemIsANormalBag(t) then
-                        completionFunc(1, t.link, "THE BLESSED RUN!")
-                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                        return
-                    end
-                    completionFunc(1, t.link, "looted")
-                    if t.rarity > 0 then
-                        -- Don't save disposition if the item is gray. We know they are looted, and there's no need to pollute CharSaved with all the grays.
-                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                    end
-                    return
-                end
-
-                if itemIsRare(t) then
-                    completionFunc(1, t.link, "rare item")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                    return
-                end
-
-                if dispo == ITEM_DISPOSITION_RARE_MOB or unitIsRare(lootedFromUnitId) then
-                    completionFunc(1, t.link, "looted from rare mob")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_RARE_MOB
-                    return
-                end
-
-                completionFunc(0, t.link, "looted")
-                if t.rarity > 0 then
-                    -- Don't save disposition if the item is gray. We know they are looted, and there's no need to pollute CharSaved with all the grays.
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                end
-                return
-
-            end
-
-            if isRewarded then
-
-                if itemIsASpecialContainer(t) then
-                    completionFunc(1, t.link, "special container")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                    return
-                end
-
-                if itemIsFromClassQuest(t) then
-                    completionFunc(1, t.link, "class quest reward")
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                    return
-                end
-
-                completionFunc(0, t.link, "quest reward")
-                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                return
-
-            end
-
-            completionFunc(0, t.link, "failed all tests")
-            CharSaved.dispositions[t.itemId] = nil
-            return
-
-        end
-
+        -- Although we return the values returned by itemStatus(), you can't count on them; they are probably nil.
+        return completionFunc(itemStatus(t, source, sourceId))
     end)
 
+end
+
+local function afterItemCanBeUsed(ok, link, why)
+    --print ('afterItemCanBeUsed:', ok, link, why)
+    if ok == 0 then
+        if not link then link = "That item" end
+        printDisallowedItem(link, why)
+    elseif ok == 1 then
+        if not link then link = "That item" end
+        printAllowedItem(link, why)
+    else
+        if link then
+            printInfo(link .. ": " .. why)
+        else
+            printWarning("Unable to look up item - please try again")
+        end
+    end
 end
 
 --[[
@@ -1482,18 +1532,18 @@ end
 local function checkInventory()
     local warningCount = 0
     for slot = 0, 18 do
-        local itemId = GetInventoryItemID('player', slot)
+        local itemId = getInventoryItemID('player', slot)
         if itemId then
             -- If there's an item in the slot, check it.
-            local ok, reason = isItemAllowed(itemId)
-            if not ok then
-                if reason then
-                    reason = '(' .. reason .. ')'
+            local status, link, why = itemCanBeUsed(itemId)
+            --print("slot", slot, ":", itemId, status, link, why)
+            if status == 0 then
+                if why then
+                    why = '(' .. why .. ')'
                 else
-                    reason = ''
+                    why = ''
                 end
-                local name, link = GetItemInfo(itemId)
-                printWarning(link .. " should be unequipped " .. reason)
+                printWarning(link .. " should be unequipped " .. why)
                 warningCount = warningCount + 1
             end
         end
@@ -1599,21 +1649,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2, arg1 = str:find("^check +(.*)$")
     if p1 and arg1 then
-        itemCanBeUsed(arg1, nil, nil, nil, function(ok, link, why)
-            if ok == 0 then
-                if not link then link = "That item" end
-                printWarning(link .. " is not allowed (" .. why .. ")")
-            elseif ok == 1 then
-                if not link then link = "That item" end
-                printGood(link .. " is allowed (" .. why .. ")")
-            else
-                if link then
-                    printInfo(link .. ": " .. why)
-                else
-                    printWarning("Unable to look up item - please try again")
-                end
-            end
-        end)
+        itemCanBeUsed(arg1, nil, nil, afterItemCanBeUsed)
         return
     end
 
@@ -1898,10 +1934,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 local nUnequipped = 0;
 
                 for slot = 0, 18 do
-                    local itemId = GetInventoryItemID("player", slot)
-                    if itemId ~= nil and itemId ~= 0 then
+                    local itemId = getInventoryItemID("player", slot)
+                    if itemId then
                         local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
-                        --print (" slot=", slot, " itemId=", itemId, " name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice)
+                        --print(" slot=", slot, " itemId=", itemId, " name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice)
                         if slot == SLOT_MAIN_HAND or slot == SLOT_OFF_HAND or slot == SLOT_RANGED or slot == SLOT_AMMO then
                             -- The player must remove any items in the lower slots.
                             allowOrDisallowItem(itemId, false)
@@ -1941,21 +1977,21 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         gLastQuestUnitTargeted = gLastUnitTargeted
         gLastMerchantUnitTargeted = nil
-        printInfo("Quest interaction begun with " .. tostring(gLastUnitTargeted))
+        --printInfo("Quest interaction begun with " .. tostring(gLastUnitTargeted))
 
     elseif event == 'QUEST_FINISHED' then
 
-        printInfo("Quest interaction ended")
+        --printInfo("Quest interaction ended")
 
     elseif event == 'MERCHANT_SHOW' then
 
         gLastMerchantUnitTargeted = gLastUnitTargeted
         gLastQuestUnitTargeted = nil
-        printInfo("Merchant interaction begun with " .. tostring(gLastUnitTargeted))
+        --printInfo("Merchant interaction begun with " .. tostring(gLastUnitTargeted))
 
     elseif event == 'MERCHANT_CLOSED' then
 
-        printInfo("Merchant interaction ended")
+        --printInfo("Merchant interaction ended")
 
     elseif event == 'LOOT_READY' then
 
@@ -1984,24 +2020,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                     gLastLootSourceGUID = guid
                 end
             end
-
-            --local icon, name, count, currencyID, quality, isLocked, isQuestItem, questID, startsANewQuest = GetLootSlotInfo(i)
-
-            --itemCanBeUsed(arg1, unitId, nil, nil, function(ok, link, why)
-            --    if ok == 0 then
-            --        if not link then link = "That item" end
-            --        printWarning(link .. " is not allowed: " .. why)
-            --    elseif ok == 1 then
-            --        if not link then link = "That item" end
-            --        printGood(link .. " is allowed: " .. why)
-            --    else
-            --        if link then
-            --            printInfo(link .. ": " .. why)
-            --        else
-            --            printWarning("Unable to look up item - please try again")
-            --        end
-            --    end
-            --end)
 
         end
 
@@ -2065,7 +2083,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if unitType == 'Creature' then
                 local _, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", guid)
                 gLastUnitTargeted = unitId
-                print("Targeting NPC", unitId, name)
+                --print("Targeting NPC", unitId, name)
             elseif unitType == 'Player' then
                 --printInfo("Targeting player " .. name .. " (" .. guid .. ")")
             else
@@ -2086,18 +2104,19 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         C_Timer.After(.3, function()
 
             local nBadItems = 0
-            local name, link
+            local status, link, why
 
             -- Look at each character slot...
             for slot = 0, 18 do
-                local itemId = GetInventoryItemID("player", slot)
+                local itemId = getInventoryItemID("player", slot)
+                --print('PLAYER_REGEN_DISABLED:', slot, itemId)
                 if itemId then
                     -- If there's an item in the slot, check it.
                     itemId = tostring(itemId)
-                    if not isItemAllowed(itemId) then
+                    status, link, why = itemCanBeUsed(itemId)
+                    if status == 0 then
                         nBadItems = nBadItems + 1
-                        name, link = GetItemInfo(itemId)
-                        printWarning("Unequip " .. link)
+                        printWarning("Unequip " .. link .. " (" .. why .. ")")
                     end
                 end
             end
@@ -2105,7 +2124,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if nBadItems > 0 then
                 playSound(ERROR_SOUND_FILE)
                 if nBadItems == 1 then
-                    flashWarning("Unequip " .. name)
+                    flashWarning("Unequip " .. link)
                 else
                     flashWarning("Unequip " .. nBadItems .. " disallowed items")
                 end
@@ -2208,14 +2227,14 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
             if not isEmpty and slot >= 0 and slot <= 18 then
 
-                local itemId = GetInventoryItemID("player", slot)
+                local itemId = getInventoryItemID("player", slot)
                 if itemId then
-                    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
-                    local allowed, reason = isItemAllowed(itemId)
-                    print("Equipping", name, itemId, allowed, reason)
+                    --local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                    local status, link, why = itemCanBeUsed(itemId)
+                    --print("Equipping", name, itemId, allowed, why)
 
-                    if not allowed then
-                        local msg = "You cannot equip " .. link
+                    if status == 0 then
+                        local msg = "You cannot equip " .. link .. " (" .. why .. ")"
                         playSound(ERROR_SOUND_FILE)
                         printWarning(msg)
                         flashWarning(msg)
@@ -2237,73 +2256,41 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local itemId, itemText = parseItemLink(text)
             local matched = false
 
-            if not matched then
-                local _, _, itemLink = text:find(L['You receive loot'] .. ": (.*)%.")
-                if itemLink ~= nil then
-                    matched = true
-                    -- The LOOT_READY event has already fired and set gLastLootSourceGUID.
-                    local unitType, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", gLastLootSourceGUID)
-                    if unitType == 'GameObject' then
-                        -- We don't know 100% for sure, but it's very likely this item is looted from a chest or something similar, so we allow it.
-                        if tonumber(unitId) == 35591 then
-                            printAllowedItem(itemLink, "via fishing")
-                        else
-                            printAllowedItem(itemLink, "via container")
-                        end
-                    else
-                        itemCanBeUsed(itemId, gLastUnitTargeted, nil, nil, function(ok, link, why)
-                            if ok == 0 then
-                                if not link then link = "That item" end
-                                printDisallowedItem(itemLink, why)
-                            elseif ok == 1 then
-                                if not link then link = "That item" end
-                                printAllowedItem(itemLink, why)
-                            else
-                                if link then
-                                    printInfo(link .. ": " .. why)
-                                else
-                                    printWarning("Unable to look up item - please try again")
-                                end
-                            end
-                        end)
-                    end
+            local _, _, itemLink = text:find(L['You receive loot'] .. ": (.*)%.")
+            if not matched and itemLink ~= nil then
+                matched = true
+                --print('match you receive loot')
+                -- The LOOT_READY event has already fired and set gLastLootSourceGUID.
+                local unitType, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", gLastLootSourceGUID)
+                if unitType == 'GameObject' then
+                    itemCanBeUsed(itemId, ITEM_SOURCE_GAME_OBJECT, unitId, afterItemCanBeUsed)
+                else
+                    itemCanBeUsed(itemId, ITEM_SOURCE_LOOTED, gLastUnitTargeted, afterItemCanBeUsed)
                 end
             end
 
-            if not matched then
-                local _, _, itemLink = text:find(L['You receive item'] .. ": (.*)%.")
-                if itemLink ~= nil then
-                    matched = true
-                    print(itemLink, gLastQuestUnitTargeted, gLastMerchantUnitTargeted)
-                    itemCanBeUsed(itemId, nil, gLastQuestUnitTargeted, gLastMerchantUnitTargeted, function(ok, link, why)
-                        if ok == 0 then
-                            if not link then link = "That item" end
-                            printDisallowedItem(itemLink, why)
-                        elseif ok == 1 then
-                            if not link then link = "That item" end
-                            printAllowedItem(itemLink, why)
-                        else
-                            if link then
-                                printInfo(link .. ": " .. why)
-                            else
-                                printWarning("Unable to look up item - please try again")
-                            end
-                        end
-                    end)
+            local _, _, itemLink = text:find(L['You receive item'] .. ": (.*)%.")
+            if not matched and itemLink ~= nil then
+                matched = true
+                --print('match you receive item')
+                if gLastQuestUnitTargeted then
+                    itemCanBeUsed(itemId, ITEM_SOURCE_REWARDED, gLastQuestUnitTargeted, afterItemCanBeUsed)
+                elseif gLastMerchantUnitTargeted then
+                    itemCanBeUsed(itemId, ITEM_SOURCE_PURCHASED, gLastMerchantUnitTargeted, afterItemCanBeUsed)
+                else
+                    itemCanBeUsed(itemId, nil, nil, afterItemCanBeUsed)
                 end
             end
 
-            if not matched then
-                local _, _, itemLink = text:find(L['You create'] .. ": (.*)%.")
-                if itemLink ~= nil then
-                    matched = true
-                    -- Make sure the player is allowed to use this itemLink, since they made it.
-                    allowOrDisallowItem(itemId, true)
-                end
+            local _, _, itemLink = text:find(L['You create'] .. ": (.*)%.")
+            if not matched and itemLink ~= nil then
+                matched = true
+                --print('match you create')
+                itemCanBeUsed(itemId, ITEM_SOURCE_SELF_MADE, nil, afterItemCanBeUsed)
             end
 
             if not matched then
-                printWarning("Unable to determine whether or not you can use " .. itemLink)
+                printWarning("Unable to determine whether or not you can use " .. itemLink .. " - check the localization strings in Mountaineer.lua")
             end
 
         end)
@@ -2313,7 +2300,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         local text = ...
         local level = UnitLevel('player')
 
-        if level >= 5 then
+        if level >= 3 then
             -- Do the following after a short delay.
             C_Timer.After(.3, function()
                 local _, _, skill = text:find("Your skill in (.*) has increased")
@@ -2345,7 +2332,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
             if unitTarget == 'player' and spellId == 3365 then
                 gPlayerOpening = 1
-                printGood("Opening something")
+                --print("Opening something")
             end
 
             if PLAYER_CLASS_ID == CLASS_HUNTER and spellId == 982 then -- Revive Pet
@@ -2365,7 +2352,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         if unitTarget == 'player' and gPlayerOpening == 1 then -- Opening
             -- This happens when the player is opening something like a chest.
             gPlayerOpening = 2
-            printGood("Opened something")
+            --print("Opened something")
         end
 
     elseif event == 'UNIT_SPELLCAST_STOP' or event == 'UNIT_SPELLCAST_INTERRUPTED' then
