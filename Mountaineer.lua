@@ -287,6 +287,8 @@ local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
 
 local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
 local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
+local WORK_COMPLETE_SOUND = 558132
+local I_HAVE_FAILED_SOUND = 557928
 
 local gPlayerGUID = ''
 local gLastUnitTargeted = nil
@@ -836,7 +838,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
     if CharSaved.did[609] then
         printWarning("You have previously violated a skill check - your mountaineer challenge is over")
         flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-        playSound(ERROR_SOUND_FILE)
+        playSound(I_HAVE_FAILED_SOUND)
         return
     end
 
@@ -858,7 +860,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
                 CharSaved.did[609] = true
                 printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                 flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                playSound(ERROR_SOUND_FILE)
+                playSound(I_HAVE_FAILED_SOUND)
             else
                 if #warnings > 0 then
                     for i = 1, #warnings do
@@ -2379,7 +2381,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                                 -- Repeat the check so the all-is-well message is displayed.
                                 checkSkills()
                                 -- Congratulate them with the "WORK COMPLETE" sound.
-                                PlaySoundFile(558132)
+                                PlaySoundFile(WORK_COMPLETE_SOUND)
                             end
                         end
                     end
@@ -2435,7 +2437,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 if CharSaved.isTrailblazer then
                     printWarning("Trailblazer mountaineers cannot hearth")
                     flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
-                    playSound(ERROR_SOUND_FILE)
+                    playSound(I_HAVE_FAILED_SOUND)
                     printWarning("You are no longer a trailblazer - you can now hearth and use flight paths, but you cannot buy from open world vendors anymore")
                     CharSaved.isTrailblazer = false
                     printInfo(whatAmI())
@@ -2502,7 +2504,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 if CharSaved.isTrailblazer then
                     printWarning("Trailblazer mountaineers cannot use flying taxis")
                     flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
-                    playSound(ERROR_SOUND_FILE)
+                    playSound(I_HAVE_FAILED_SOUND)
                     printWarning("You are no longer a trailblazer - you can now hearth and use flight paths, but you cannot buy from open world vendors anymore")
                     CharSaved.isTrailblazer = false
                     printInfo(whatAmI())
