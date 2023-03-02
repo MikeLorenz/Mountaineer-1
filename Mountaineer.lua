@@ -961,7 +961,12 @@ local function itemIsARealWeapon(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    return (t.classId == Enum.ItemClass.Weapon and t.subclassId ~= Enum.ItemWeaponSubclass.FishingPole)
+    if type(t) == 'table' then
+        return (t.classId == Enum.ItemClass.Weapon and t.subclassId ~= Enum.ItemWeaponSubclass.FishingPole)
+    elseif type(t) == 'string' or type(t) == 'number' then
+        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(t)
+        return (classId == Enum.ItemClass.Weapon and subclassId ~= Enum.ItemWeaponSubclass.FishingPole)
+    end
 
 end
 
@@ -1245,15 +1250,15 @@ local ITEM_SOURCE_PURCHASED     = 3
 local ITEM_SOURCE_GAME_OBJECT   = 4
 local ITEM_SOURCE_SELF_MADE     = 5
 
-local function itemStatus(t, source, sourceId)
+local function itemStatus(t, source, sourceId, isNewItem)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     -- If the item is already on the allowed or disallowed lists, we don't need to use any logic.
-    if gDefaultAllowedItems[itemId] then
+    if gDefaultAllowedItems[t.itemId] then
         return 1, t.link, gDefaultAllowedItems[t.itemId]
     end
-    if gDefaultDisallowedItems[itemId] then
+    if gDefaultDisallowedItems[t.itemId] then
         return 0, t.link, gDefaultDisallowedItems[t.itemId]
     end
 
@@ -1262,7 +1267,7 @@ local function itemStatus(t, source, sourceId)
 
     --print('itemStatus:', t.link, t.itemId, t.rarity, source, sourceId, dispo)
 
-    if dispo then
+    if dispo and not isNewItem then
 
         if dispo == ITEM_DISPOSITION_ALLOWED then
             return 1, t.link, "allowed item"
@@ -1357,6 +1362,11 @@ local function itemStatus(t, source, sourceId)
         -- enough information in the item intrinsically to determine its
         -- disposition.
 
+        if source == ITEM_SOURCE_SELF_MADE then
+            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_SELF_MADE
+            return 1, t.link, "self-made"
+        end
+
         if itemIsARealWeapon(t) and not CharSaved.madeWeapon then
             CharSaved.dispositions[t.itemId] = nil
             return 0, t.link, "cannot use weapons until crafting one of your own"
@@ -1378,13 +1388,6 @@ local function itemStatus(t, source, sourceId)
             -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
             CharSaved.dispositions[t.itemId] = nil
             return 1, t.link, "quest item"
-        end
-
-        if source == ITEM_SOURCE_SELF_MADE then
-
-            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_SELF_MADE
-            return 1, t.link, "self-made"
-
         end
 
         if source == ITEM_SOURCE_GAME_OBJECT then
@@ -1490,7 +1493,7 @@ local function itemStatus(t, source, sourceId)
 
 end
 
-local function itemCanBeUsed(itemId, source, sourceId, completionFunc)
+local function itemCanBeUsed(itemId, source, sourceId, isNewItem, completionFunc)
 
     itemId = itemId or ''
     if itemId == '' or itemId == '0' then
@@ -1518,7 +1521,7 @@ local function itemCanBeUsed(itemId, source, sourceId, completionFunc)
 
     -- If we got information for the item, then return the item's status immediately.
     if not completionFunc then
-        return itemStatus(t, source, sourceId)
+        return itemStatus(t, source, sourceId, isNewItem)
     end
 
     -- Sometimes we don't get anything back from GetitemInfo() because it needs time to retrieve it from the server.
@@ -1534,7 +1537,7 @@ local function itemCanBeUsed(itemId, source, sourceId, completionFunc)
 
     Queue.push(functionQueue, function ()
         -- Although we return the values returned by itemStatus(), you can't count on them; they are probably nil.
-        return completionFunc(itemStatus(t, source, sourceId))
+        return completionFunc(itemStatus(t, source, sourceId, isNewItem))
     end)
 
 end
@@ -2327,6 +2330,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'PLAYER_EQUIPMENT_CHANGED' then
 
         local slot, isEmpty = ...
+        --print('PLAYER_EQUIPMENT_CHANGED', slot, isEmpty)
 
         -- Do the following after a short delay.
         C_Timer.After(.3, function()
@@ -2334,8 +2338,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if not isEmpty and slot >= 0 and slot <= 18 then
 
                 local itemId = getInventoryItemID("player", slot)
+                --print('getInventoryItemID', itemId)
+
                 if itemId then
-                    --local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                    itemId = tostring(itemId)
                     local status, link, why = itemCanBeUsed(itemId)
                     --print("Equipping", name, itemId, allowed, why)
 
@@ -2344,6 +2350,18 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                         playSound(ERROR_SOUND_FILE)
                         printWarning(msg)
                         flashWarning(msg)
+                    elseif status == 1 then
+                        if not CharSaved.madeWeapon then
+                            if itemIsARealWeapon(itemId) then
+                                if CharSaved.dispositions[itemId] == ITEM_DISPOSITION_SELF_MADE then
+                                    DoEmote('CHEER')
+                                    printGood("Congratulations, you just equipped your first self-made weapon!!!")
+                                    printGood("All your spells and abilities are not unlocked.")
+                                    printGood("You can continue to use the weapon, or discard it.")
+                                    CharSaved.madeWeapon = true
+                                end
+                            end
+                        end
                     end
                 end
 
@@ -2369,9 +2387,9 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 -- The LOOT_READY event has already fired and set gLastLootSourceGUID.
                 local unitType, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", gLastLootSourceGUID)
                 if unitType == 'GameObject' then
-                    itemCanBeUsed(itemId, ITEM_SOURCE_GAME_OBJECT, unitId, afterItemCanBeUsed)
+                    itemCanBeUsed(itemId, ITEM_SOURCE_GAME_OBJECT, unitId, true, afterItemCanBeUsed)
                 else
-                    itemCanBeUsed(itemId, ITEM_SOURCE_LOOTED, gLastUnitTargeted, afterItemCanBeUsed)
+                    itemCanBeUsed(itemId, ITEM_SOURCE_LOOTED, gLastUnitTargeted, true, afterItemCanBeUsed)
                 end
             end
 
@@ -2380,11 +2398,11 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 matched = true
                 --print('match you receive item')
                 if gLastQuestUnitTargeted then
-                    itemCanBeUsed(itemId, ITEM_SOURCE_REWARDED, gLastQuestUnitTargeted, afterItemCanBeUsed)
+                    itemCanBeUsed(itemId, ITEM_SOURCE_REWARDED, gLastQuestUnitTargeted, true, afterItemCanBeUsed)
                 elseif gLastMerchantUnitTargeted then
-                    itemCanBeUsed(itemId, ITEM_SOURCE_PURCHASED, gLastMerchantUnitTargeted, afterItemCanBeUsed)
+                    itemCanBeUsed(itemId, ITEM_SOURCE_PURCHASED, gLastMerchantUnitTargeted, true, afterItemCanBeUsed)
                 else
-                    itemCanBeUsed(itemId, nil, nil, afterItemCanBeUsed)
+                    itemCanBeUsed(itemId, nil, nil, true, afterItemCanBeUsed)
                 end
             end
 
@@ -2392,7 +2410,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if not matched and itemLink ~= nil then
                 matched = true
                 --print('match you create')
-                itemCanBeUsed(itemId, ITEM_SOURCE_SELF_MADE, nil, afterItemCanBeUsed)
+                itemCanBeUsed(itemId, ITEM_SOURCE_SELF_MADE, nil, true, afterItemCanBeUsed)
             end
 
             if not matched then
