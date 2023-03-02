@@ -288,7 +288,6 @@ local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
 local PUNCH_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\SharpPunch.ogg"
 local ERROR_SOUND_FILE = "Interface\\AddOns\\Mountaineer\\Sounds\\ErrorBeep.ogg"
 
-local gPlayerOpening = 0            -- 1=opening, 2=opened -- This is set when UNIT_SPELLCAST_SUCCEEDED fires on spell 3365 (Opening); set to 0 on LOOT_CLOSED
 local gPlayerGUID = ''
 local gLastUnitTargeted = nil
 local gLastLootSourceGUID = ''
@@ -1935,9 +1934,7 @@ EventFrame:RegisterEvent('CHAT_MSG_LOOT')
 EventFrame:RegisterEvent('CHAT_MSG_SKILL')
 EventFrame:RegisterEvent('GET_ITEM_INFO_RECEIVED')
 EventFrame:RegisterEvent('LEARNED_SPELL_IN_TAB')
-EventFrame:RegisterEvent('LOOT_CLOSED')
 EventFrame:RegisterEvent('LOOT_READY')
-EventFrame:RegisterEvent('LOOT_SLOT_CLEARED')
 EventFrame:RegisterEvent('MERCHANT_CLOSED')
 EventFrame:RegisterEvent('MERCHANT_SHOW')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
@@ -1951,10 +1948,7 @@ EventFrame:RegisterEvent('QUEST_COMPLETE')
 EventFrame:RegisterEvent('QUEST_DETAIL')
 EventFrame:RegisterEvent('QUEST_FINISHED')
 EventFrame:RegisterEvent('QUEST_PROGRESS')
-EventFrame:RegisterEvent('UNIT_SPELLCAST_INTERRUPTED')
 EventFrame:RegisterEvent('UNIT_SPELLCAST_SENT')
-EventFrame:RegisterEvent('UNIT_SPELLCAST_STOP')
-EventFrame:RegisterEvent('UNIT_SPELLCAST_SUCCEEDED')
 
 EventFrame:SetScript('OnEvent', function(self, event, ...)
 
@@ -2138,14 +2132,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         --=--for i = 1, #lootTable do
         --=--    print(ut.tfmt(lootTable[i]))
         --=--end
-
-    elseif event == 'LOOT_SLOT_CLEARED' then
-
-    elseif event == 'LOOT_CLOSED' then
-
-        -- In case the item being looted is a chest or other item that was opened, we turn off this flag.
-        gPlayerOpening = 0
-        --=--printGood("Closed it")
 
     elseif event == 'PLAYER_TARGET_CHANGED' then
 
@@ -2413,11 +2399,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         -- Do the following after a short delay.
         C_Timer.After(.1, function()
 
-            if unitTarget == 'player' and spellId == 3365 then
-                gPlayerOpening = 1
-                --print("Opening something")
-            end
-
             if PLAYER_CLASS_ID == CLASS_HUNTER and spellId == 982 then -- Revive Pet
                 local msg = "Pets are mortal, you must abandon after reviving"
                 printWarning(msg)
@@ -2432,23 +2413,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             end
 
         end)
-
-    elseif event == 'UNIT_SPELLCAST_SUCCEEDED' then
-
-        local unitTarget, _, castGUID, spellId = ...
-        --local name = getSpellName(spellId)
-        --print('UNIT_SPELLCAST_SUCCEEDED', spellId, unitTarget)
-
-        if unitTarget == 'player' and gPlayerOpening == 1 then -- Opening
-            -- This happens when the player is opening something like a chest.
-            gPlayerOpening = 2
-            --print("Opened something")
-        end
-
-    elseif event == 'UNIT_SPELLCAST_STOP' or event == 'UNIT_SPELLCAST_INTERRUPTED' then
-
-        gPlayerOpening = 0
-        --=--printGood("Closed it")
 
     elseif event == 'GET_ITEM_INFO_RECEIVED' then
 
