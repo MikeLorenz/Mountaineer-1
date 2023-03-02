@@ -836,7 +836,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                         if playerLevel >= 10 then
                             fatals[#fatals+1] = "You are a lazy bastard mountaineer, but you did not drop your primary professions before reaching level 10."
                         elseif playerLevel == 9 then
-                            warnings[#warnings+1] = "As a lazy bastard mountaineer, you need to drop all primary professions before reaching level 10"
+                            warnings[#warnings+1] = "As a lazy bastard mountaineer, you need to drop all primary professions BEFORE reaching level 10"
                         elseif playerLevel == 8 then
                             reminders[#reminders+1] = "As a lazy bastard mountaineer, you will need to drop all primary professions before reaching level 10"
                         end
@@ -1934,7 +1934,6 @@ EventFrame:RegisterEvent('ACTIONBAR_SLOT_CHANGED')
 EventFrame:RegisterEvent('CHAT_MSG_LOOT')
 EventFrame:RegisterEvent('CHAT_MSG_SKILL')
 EventFrame:RegisterEvent('GET_ITEM_INFO_RECEIVED')
-EventFrame:RegisterEvent('ITEM_PUSH')
 EventFrame:RegisterEvent('LEARNED_SPELL_IN_TAB')
 EventFrame:RegisterEvent('LOOT_CLOSED')
 EventFrame:RegisterEvent('LOOT_READY')
@@ -2148,32 +2147,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         -- In case the item being looted is a chest or other item that was opened, we turn off this flag.
         gPlayerOpening = 0
         --=--printGood("Closed it")
-
-    elseif event == 'ITEM_PUSH' then
-
-        --=--local bag, texturePushed = ...
-        --=--if bag >= 0 then
-        --=--    printInfo("Item added to bag " .. bag .. " (" .. texturePushed .. ")")
-        --=--    -- Do the following after a short delay.
-        --=--    C_Timer.After(.3, function()
-        --=--        local nSlots = getContainerNumSlots(bag)
-        --=--        for slot = 1, nSlots do
-        --=--            local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = getContainerItemInfo(bag, slot)
-        --=--            if texture and tostring(texture) == tostring(texturePushed) then
-        --=--                print('Pushed ' .. tostring(hyperlink)
-        --=--                    .. '  id='      .. tostring(itemId)
-        --=--                    .. '  quality=' .. tostring(quality)
-        --=--                    .. '  count='   .. tostring(stackCount)
-        --=--                    .. (isLocked    and '  (locked)'    or '')
-        --=--                    .. (isReadable  and '  (readable)'  or '')
-        --=--                    .. (isFiltered  and '  (filtered)'  or '')
-        --=--                    .. (isBound     and '  (bound)'     or '')
-        --=--                    .. (hasNoValue  and '  (novalue)'   or '')
-        --=--                )
-        --=--            end
-        --=--        end
-        --=--    end)
-        --=--end
 
     elseif event == 'PLAYER_TARGET_CHANGED' then
 
