@@ -150,6 +150,8 @@ local CLASS_MONK = 10
 local CLASS_DRUID = 11
 local CLASS_DEMONHUNTER = 12
 
+local CLASS_IDS_ALPHABETICAL = {CLASS_DRUID, CLASS_HUNTER, CLASS_MAGE, CLASS_PALADIN, CLASS_PRIEST, CLASS_ROGUE, CLASS_SHAMAN, CLASS_WARLOCK, CLASS_WARRIOR}
+
 local SLOT_AMMO = 0
 local SLOT_HEAD = 1
 local SLOT_NECK = 2
@@ -251,6 +253,16 @@ local function parseItemLink(link)
     return id, text
 end
 
+local function getSpellName(id)
+    local name = GetSpellInfo(id)
+    if not name then return nil end
+    local subtext = GetSpellSubtext(id)
+    --print(name, subtext)
+    local fullName = name
+    if subtext and subtext ~= '' then fullName = fullName .. '(' .. subtext .. ')' end
+    return fullName
+end
+
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @@                                                                              @@
@@ -259,11 +271,16 @@ end
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
--- Localization strings. The string after each '=' sign will need to be changed if not US English.
+-- Localization (i18n) strings. The string after each '=' sign will need to be changed if not US English.
 local L = {
-    ["You receive loot"] = "You receive loot",
-    ["You receive item"] = "You receive item",
-    ["You create"] = "You create",
+    ["You receive loot"] = "You receive loot",  -- The message you get when you loot a corpse.
+    ["You receive item"] = "You receive item",  -- The message you get when you get a quest reward or buy something from a merchant.
+    ["You create"] = "You create",  -- The message you get when you create something.
+    ["Professions"] = "Professions",  -- The heading for the section of the Skills dialog that contains your primary professions.
+    ["Unarmed"] = "Unarmed",  -- Secondary profession name as it appears in the Skills dialog.
+    ["First Aid"] = "First Aid",  -- Secondary profession name as it appears in the Skills dialog.
+    ["Fishing"] = "Fishing",  -- Secondary profession name as it appears in the Skills dialog.
+    ["Cooking"] = "Cooking",  -- Secondary profession name as it appears in the Skills dialog.
 }
 
 local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
@@ -543,57 +560,87 @@ local function whatAmI()
         .. " mountaineer"
 end
 
-local function whichSpellsCanIUse(class)
-    -- The string are used in this sentence: "You can only train and use ____"
+local function getUsableSpellIds(class)
     if class == CLASS_WARRIOR then
-        if gameVersion() < 3 then
-            return "Battle Shout, Battle Stance, Charge, Thunder Clap"
-        else
-            return "Battle Shout, Battle Stance, Charge, Thunder Clap, Victory Rush"
-        end
+        return {2457, 6673, 100}
     elseif class == CLASS_PALADIN then
-        return "Blessing of Might, Devotion Aura, Divine Protection, Hammer of Justice, Holy Light, Purify, Seals"
+        if gameVersion() < 3 then
+            return {21084, 635, 465, 19740, 21082, 498, 639, 853, 1152}
+        else
+            return {21084, 635, 465, 19740, 498, 639, 853, 1152}
+        end
     elseif class == CLASS_HUNTER then
-        return "Aspect of the Monkey, Hunter's Mark, Tracking"
+        return {1494, 13163, 1130}
     elseif class == CLASS_ROGUE then
-        return "Evasion, Pick Pocket, Stealth"
+        return {1784, 921, 5277}
     elseif class == CLASS_PRIEST then
-        return "Fade, Lesser Heal, Power Word Fortitude, Power Word Shield, Renew, Smite (Rank 1)"
+        return {585, 2050, 1243, 2052, 17, 586, 139}
     elseif class == CLASS_SHAMAN then
-        return "All earth totems, Healing Wave, Lightning Bolt (Rank 1), Lightning Shield, Rockbiter Weapon"
+        return {403, 331, 8017, 8071, 2484, 332, 8018, 5730}
     elseif class == CLASS_MAGE then
-        return "Arcane Intellect, Conjure Food & Water, Fireball (Rank 1), Frost Armor, Polymorph"
+        return {168, 133, 1459, 5504, 587, 118}
     elseif class == CLASS_WARLOCK then
-        return "Curse of Weakness, Demon Skin, Fear, Life Tap, Shadow Bolt (Rank 1)"
+        return {686, 687, 702, 1454, 5782}
     elseif class == CLASS_DRUID then
-        return "Healing Touch, Mark of the Wild, Rejuvenation, Thorns, Wrath (Rank 1)"
+        return {5185, 1126, 774, 8921, 5186}
     else
-        return "defensive abilities, or those that only cause damage at melee range, or do not require a melee weapon to be equipped"
+        return {}
     end
 end
 
-local function whichSpellsCanINotUse(class)
-    -- The string are used in this sentence: "You cannot use ____"
+local function getNonUsableSpellIds(class)
     if class == CLASS_WARRIOR then
-        return "Heroic Strike, Rend, Hamstring"
+        return {78, 772, 6343, 34428, 1715}
     elseif class == CLASS_PALADIN then
-        return "Judgement"
+        return {20271}
     elseif class == CLASS_HUNTER then
-        return "Arcane Shot, Concussive Shot, Serpent Sting"
+        return {1978, 3044, 5116, 14260}
     elseif class == CLASS_ROGUE then
-        return "Backstab, Eviscerate, Gouge, Sinister Strike"
+        return {53, 1776, 1757, 6760}
     elseif class == CLASS_PRIEST then
-        return "Shadow Word Pain, Smite (Rank 2)"
+        return {589, 591}
     elseif class == CLASS_SHAMAN then
-        return "Earth Shock, Lightning Bolt (Rank 2)"
+        return {8042, 324, 529}
     elseif class == CLASS_MAGE then
-        return "Arcane Missiles, Fire Blast, Fireball (Rank 2), Frostbolt"
+        return {116, 2136, 143, 5143}
     elseif class == CLASS_WARLOCK then
-        return "Corruption, Curse of Agony, Immolate, Shadow Bolt, Summon Imp"
+        return {688, 348, 172, 695, 980}
     elseif class == CLASS_DRUID then
-        return "Entangling Roots, Moonfire, Wrath (Rank 2)"
+        return {8921, 467, 5177, 339}
     else
-        return "abilities that cause damage beyond melee range, or abilities that require a melee weapon to be equipped"
+        return {}
+    end
+end
+
+local function getUsableSpellNames(class)
+    local t = {}
+    for _, id in ipairs(getUsableSpellIds(class)) do
+        local name = getSpellName(id)
+        if name then t[#t + 1] = name end
+    end
+    return table.concat(t, ', ')
+end
+
+local function getNonUsableSpellNames(class)
+    local t = {}
+    for _, id in ipairs(getNonUsableSpellIds(class)) do
+        local name = getSpellName(id)
+        if name then t[#t + 1] = name end
+    end
+    return table.concat(t, ', ')
+end
+
+local function dumpUsableSpells()
+    for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
+        local className = GetClassInfo(classId)
+        print(string.upper(className) .. ":", getUsableSpellNames(classId))
+    end
+end
+
+local function dumpNonUsableSpells()
+    for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
+        local className = GetClassInfo(classId)
+        print(string.upper(className) .. ":", getNonUsableSpellNames(classId))
     end
 end
 
@@ -602,9 +649,19 @@ local function printSpellsICanAndCannotUse()
     if CharSaved.madeWeapon then
         printGood("You have made your self-crafted weapon, so you can use any spells and abilities.")
     else
-        printInfo("You can use " .. whichSpellsCanIUse(PLAYER_CLASS_ID) .. ".")
-        printInfo("You cannot use " .. whichSpellsCanINotUse(PLAYER_CLASS_ID) .. ".")
+        printInfo("You can use " .. getUsableSpellNames(PLAYER_CLASS_ID) .. ".")
+        printInfo("You cannot use " .. getNonUsableSpellNames(PLAYER_CLASS_ID) .. ".")
     end
+end
+
+local function spellIsAllowed(spellId)
+    if CharSaved.madeWeapon then return true end
+    for _, id in ipairs(getNonUsableSpellIds(PLAYER_CLASS_ID)) do
+        if tostring(spellId) == tostring(id) then
+            return false
+        end
+    end
+    return true
 end
 
 -- Allows or disallows an item (or forgets an item if allow == nil). Returns true if the item was found and modified. Returns false if there was an error.
@@ -675,10 +732,10 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
 
     -- These are the only skills we care about.
     local skills = {
-        ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = 'Unarmed' },
-        ['first aid'] = { rank = 0, firstCheckLevel = 10, name = 'First Aid' },
-        ['fishing']   = { rank = 0, firstCheckLevel = 10, name = 'Fishing' },
-        ['cooking']   = { rank = 0, firstCheckLevel = 10, name = 'Cooking' },
+        ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = L['Unarmed'] },
+        ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
+        ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
+        ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
     }
 
     local playerLevel = UnitLevel('player');
@@ -756,6 +813,38 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                 warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
             elseif playerLevel >= 6 then
                 reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
+            end
+        end
+
+        if CharSaved.isLazyBastard then
+            local sawProfessionsHeader = false
+            for i = 1, GetNumSkillLines() do
+                local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
+                if isHeader then
+                    if sawProfessionsHeader then
+                        -- We're at a new header after seeing the Professions header, so we're done.
+                        break
+                    elseif string.lower(name) == string.lower(L["Professions"]) then
+                        sawProfessionsHeader = true
+                        if not isExpanded then
+                            exceptions[#exceptions+1] = "Cannot find your primary professions - please go into your skill window and expand the \"" .. L["Professions"] .. "\" section"
+                        end
+                    end
+                else
+                    if sawProfessionsHeader then
+                        -- It's a primary profession.
+                        if playerLevel >= 10 then
+                            fatals[#fatals+1] = "You are a lazy bastard mountaineer, but you did not drop your primary professions before reaching level 10."
+                        elseif playerLevel == 9 then
+                            warnings[#warnings+1] = "As a lazy bastard mountaineer, you need to drop all primary professions before reaching level 10"
+                        elseif playerLevel == 8 then
+                            reminders[#reminders+1] = "As a lazy bastard mountaineer, you will need to drop all primary professions before reaching level 10"
+                        end
+                        break
+                    else
+                        -- It's not a primary profession, we're not interested in it.
+                    end
+                end
             end
         end
 
@@ -888,7 +977,7 @@ local function itemIsFoodOrDrink(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    print('itemIsFoodOrDrink', t.link, t.itemId, 'class', t.classId, 'subclass', t.subclassId, '==>', (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5)))
+    --print('itemIsFoodOrDrink', t.link, t.itemId, 'class', t.classId, 'subclass', t.subclassId, '==>', (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5)))
 
     return (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5))
 
@@ -1761,6 +1850,15 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2 = str:find("^dus$")
+    if p1 then
+        printGood("=== USABLE ===")
+        dumpUsableSpells()
+        printGood("=== NON-USABLE ===")
+        dumpNonUsableSpells()
+        return
+    end
+
     p1, p2, arg1 = str:find("^spell +(.*)$")
     if p1 and arg1 then
         dumpSpell(arg1)
@@ -1829,10 +1927,12 @@ end
 ]]
 
 local EventFrame = CreateFrame('frame', 'EventFrame')
+EventFrame:RegisterEvent('ACTIONBAR_SLOT_CHANGED')
 EventFrame:RegisterEvent('CHAT_MSG_LOOT')
 EventFrame:RegisterEvent('CHAT_MSG_SKILL')
 EventFrame:RegisterEvent('GET_ITEM_INFO_RECEIVED')
 EventFrame:RegisterEvent('ITEM_PUSH')
+EventFrame:RegisterEvent('LEARNED_SPELL_IN_TAB')
 EventFrame:RegisterEvent('LOOT_CLOSED')
 EventFrame:RegisterEvent('LOOT_READY')
 EventFrame:RegisterEvent('LOOT_SLOT_CLEARED')
@@ -1863,6 +1963,12 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         local level = UnitLevel('player')
         local xp = UnitXP('player')
+
+        -- Call this function to "prime the pump" for getting spell subtext if needed somewhere later on.
+        -- The spell number here doesn't matter, just the fact that we call it.
+        -- If we don't do this, we won't get spell ranks the first time.
+        -- TBH if we do this, it's not a guarantee that the ranks will be returned the first time.
+        getSpellName(78)
 
         gPlayerGUID = UnitGUID('player')
 
@@ -2326,6 +2432,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'UNIT_SPELLCAST_SENT' then
 
         local unitTarget, _, castGUID, spellId = ...
+        local name = getSpellName(spellId)
+        --print('UNIT_SPELLCAST_SENT', spellId, name)
 
         -- Do the following after a short delay.
         C_Timer.After(.1, function()
@@ -2342,12 +2450,19 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 playSound(ERROR_SOUND_FILE)
             end
 
+            if not spellIsAllowed(spellId) then
+                printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon")
+                flashWarning("You cannot use " .. name)
+                playSound(ERROR_SOUND_FILE)
+            end
+
         end)
 
     elseif event == 'UNIT_SPELLCAST_SUCCEEDED' then
 
         local unitTarget, _, castGUID, spellId = ...
-        --printGood("UNIT_SPELLCAST_SUCCEEDED " .. unitTarget .. " " .. tostring(spellId))
+        --local name = getSpellName(spellId)
+        --print('UNIT_SPELLCAST_SUCCEEDED', spellId, unitTarget)
 
         if unitTarget == 'player' and gPlayerOpening == 1 then -- Opening
             -- This happens when the player is opening something like a chest.
@@ -2362,13 +2477,42 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     elseif event == 'GET_ITEM_INFO_RECEIVED' then
 
-
         local func = Queue.pop(functionQueue)
         if func then
             --print('GET_ITEM_INFO_RECEIVED')
             func()
         end
 
+    elseif event == 'LEARNED_SPELL_IN_TAB' then
+
+        local spellId, tabIndex, isGuildPerkSpell = ...
+        local name = getSpellName(spellId)
+
+        if not CharSaved.madeWeapon then
+            if not spellIsAllowed(spellId) then
+                printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon")
+                flashWarning("You cannot use " .. name)
+                playSound(ERROR_SOUND_FILE)
+            end
+        end
+
+    elseif event == 'ACTIONBAR_SLOT_CHANGED' then
+
+        local slot = ...
+
+        if HasAction(slot) then
+            local actionType, id = GetActionInfo(slot)
+            if actionType == 'spell' then
+                local name = getSpellName(id)
+                if not spellIsAllowed(id) then
+                    printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon")
+                    flashWarning("You cannot use " .. name)
+                    playSound(ERROR_SOUND_FILE)
+                end
+            end
+        end
+
     end
 
 end)
+
