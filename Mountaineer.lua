@@ -1487,6 +1487,8 @@ end
 
 local function itemCanBeUsed(itemId, source, sourceId, isNewItem, completionFunc)
 
+    --print('itemCanBeUsed', itemId, source, sourceId, isNewItem, completionFunc)
+
     itemId = itemId or ''
     if itemId == '' or itemId == '0' then
         if completionFunc then
@@ -1742,7 +1744,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2, arg1 = str:find("^check +(.*)$")
     if p1 and arg1 then
-        itemCanBeUsed(arg1, nil, nil, afterItemCanBeUsed)
+        itemCanBeUsed(arg1, nil, nil, nil, afterItemCanBeUsed)
         return
     end
 
