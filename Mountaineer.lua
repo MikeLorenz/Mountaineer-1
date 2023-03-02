@@ -1940,7 +1940,6 @@ EventFrame:RegisterEvent('LOOT_READY')
 EventFrame:RegisterEvent('LOOT_SLOT_CLEARED')
 EventFrame:RegisterEvent('MERCHANT_CLOSED')
 EventFrame:RegisterEvent('MERCHANT_SHOW')
-EventFrame:RegisterEvent('PLAYER_CAMPING')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
 EventFrame:RegisterEvent('PLAYER_EQUIPMENT_CHANGED')
 EventFrame:RegisterEvent('PLAYER_LEVEL_UP')
@@ -2284,21 +2283,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             end
 
         end)
-
-    elseif event == 'PLAYER_CAMPING' then
-
-        -- MSL 2022-08-07
-        -- I noticed this was commented out, and my hunch is that by the time
-        -- this code is executed, if the player is in a rested XP area, they
-        -- have already logged out and it's too late to show the warning.
-
-        --if IsResting() then
-        --    local msg = "You should logout in the great outdoors after starting a campfire"
-        --    printInfo(msg)
-        --    flashInfo(msg)
-        --else
-        --    printGood("Camping approved")
-        --end
 
     elseif event == 'PLAYER_EQUIPMENT_CHANGED' then
 
