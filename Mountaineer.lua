@@ -362,6 +362,30 @@ local gDefaultDisallowedItems = {
     ['34582'] = "vendor-only", -- Mysterious Shell
 }
 
+local gUsableSpellIds = {
+    [CLASS_WARRIOR] = {2457, 6673, 100},
+    [CLASS_PALADIN] = {21084, 635, 465, 19740, 21082, 498, 639, 853, 1152},
+    [CLASS_HUNTER]  = {1494, 13163, 1130},
+    [CLASS_ROGUE]   = {1784, 921, 5277},
+    [CLASS_PRIEST]  = {585, 2050, 1243, 2052, 17, 586, 139},
+    [CLASS_SHAMAN]  = {403, 331, 8017, 8071, 2484, 332, 8018, 5730},
+    [CLASS_MAGE]    = {168, 133, 1459, 5504, 587, 118},
+    [CLASS_WARLOCK] = {686, 687, 702, 1454, 5782},
+    [CLASS_DRUID]   = {5185, 1126, 774, 8921, 5186},
+}
+
+local gNonUsableSpellIds = {
+    [CLASS_WARRIOR] = {78, 772, 6343, 34428, 1715},
+    [CLASS_PALADIN] = {20271},
+    [CLASS_HUNTER]  = {2973, 1978, 3044, 5116, 14260},
+    [CLASS_ROGUE]   = {1752, 2098, 53, 1776, 1757, 6760},
+    [CLASS_PRIEST]  = {589, 591},
+    [CLASS_SHAMAN]  = {8042, 324, 529},
+    [CLASS_MAGE]    = {116, 2136, 143, 5143},
+    [CLASS_WARLOCK] = {688, 348, 172, 695, 980},
+    [CLASS_DRUID]   = {8921, 467, 5177, 339},
+}
+
 local ITEM_DISPOSITION_ALLOWED      =  1    -- /mtn allow, items fished, taken from chests, and self-made
 local ITEM_DISPOSITION_DISALLOWED   =  2    -- /mtn disallow
 local ITEM_DISPOSITION_LOOTED       =  3    -- items looted from mobs
@@ -559,61 +583,9 @@ local function whatAmI()
         .. " mountaineer"
 end
 
-local function getUsableSpellIds(class)
-    if class == CLASS_WARRIOR then
-        return {2457, 6673, 100}
-    elseif class == CLASS_PALADIN then
-        if gameVersion() < 3 then
-            return {21084, 635, 465, 19740, 21082, 498, 639, 853, 1152}
-        else
-            return {21084, 635, 465, 19740, 498, 639, 853, 1152}
-        end
-    elseif class == CLASS_HUNTER then
-        return {1494, 13163, 1130}
-    elseif class == CLASS_ROGUE then
-        return {1784, 921, 5277}
-    elseif class == CLASS_PRIEST then
-        return {585, 2050, 1243, 2052, 17, 586, 139}
-    elseif class == CLASS_SHAMAN then
-        return {403, 331, 8017, 8071, 2484, 332, 8018, 5730}
-    elseif class == CLASS_MAGE then
-        return {168, 133, 1459, 5504, 587, 118}
-    elseif class == CLASS_WARLOCK then
-        return {686, 687, 702, 1454, 5782}
-    elseif class == CLASS_DRUID then
-        return {5185, 1126, 774, 8921, 5186}
-    else
-        return {}
-    end
-end
-
-local function getNonUsableSpellIds(class)
-    if class == CLASS_WARRIOR then
-        return {78, 772, 6343, 34428, 1715}
-    elseif class == CLASS_PALADIN then
-        return {20271}
-    elseif class == CLASS_HUNTER then
-        return {1978, 3044, 5116, 14260}
-    elseif class == CLASS_ROGUE then
-        return {53, 1776, 1757, 6760}
-    elseif class == CLASS_PRIEST then
-        return {589, 591}
-    elseif class == CLASS_SHAMAN then
-        return {8042, 324, 529}
-    elseif class == CLASS_MAGE then
-        return {116, 2136, 143, 5143}
-    elseif class == CLASS_WARLOCK then
-        return {688, 348, 172, 695, 980}
-    elseif class == CLASS_DRUID then
-        return {8921, 467, 5177, 339}
-    else
-        return {}
-    end
-end
-
 local function getUsableSpellNames(class)
     local t = {}
-    for _, id in ipairs(getUsableSpellIds(class)) do
+    for _, id in ipairs(gUsableSpellIds[class]) do
         local name = getSpellName(id)
         if name then t[#t + 1] = name end
     end
@@ -622,7 +594,7 @@ end
 
 local function getNonUsableSpellNames(class)
     local t = {}
-    for _, id in ipairs(getNonUsableSpellIds(class)) do
+    for _, id in ipairs(gNonUsableSpellIds[class]) do
         local name = getSpellName(id)
         if name then t[#t + 1] = name end
     end
@@ -655,7 +627,7 @@ end
 
 local function spellIsAllowed(spellId)
     if CharSaved.madeWeapon then return true end
-    for _, id in ipairs(getNonUsableSpellIds(PLAYER_CLASS_ID)) do
+    for _, id in ipairs(gNonUsableSpellIds[PLAYER_CLASS_ID]) do
         if tostring(spellId) == tostring(id) then
             return false
         end
@@ -1718,9 +1690,10 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     if p1 then
         CharSaved.madeWeapon = not CharSaved.madeWeapon
         if CharSaved.madeWeapon then
-            printGood("You are now marked as having made your self-crafted weapon, congratulations! " .. colorText('ffffff', "All your spells and abilities are now unlocked."))
+            printGood("You are now marked as having made your self-crafted weapon, congratulations! " .. colorText('ffffff', "All your spells and abilities are unlocked."))
         else
-            printGood("You are now marked as not yet having made your self-crafted weapon. " .. colorText('ffffff', "You may only use the abilities you were \"born\" with, plus non-damanging spells and abilities."))
+            printGood("You are now marked as not yet having made your self-crafted weapon")
+            printSpellsICanAndCannotUse()
         end
         return
     end
@@ -1959,16 +1932,17 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         local level = UnitLevel('player')
         local xp = UnitXP('player')
 
-        -- Call this function to "prime the pump" for getting spell subtext if needed somewhere later on.
-        -- The spell number here doesn't matter, just the fact that we call it.
-        -- If we don't do this, we won't get spell ranks the first time.
-        -- TBH if we do this, it's not a guarantee that the ranks will be returned the first time.
-        getSpellName(78)
-
         gPlayerGUID = UnitGUID('player')
 
         printInfo("Loaded - type /mtn to access options and features")
         printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
+
+        -- Prime the pump for getting spell subtext if needed somewhere later on.
+        -- It looks like each spell has its own cache for subtext (spell ranks).
+        for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
+            getUsableSpellNames(classId)
+            getNonUsableSpellNames(classId)
+        end
 
         -- Get basic player information.
 
