@@ -300,6 +300,8 @@ local gLastMerchantUnitTargeted = nil
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
 local gSkillsAreUpToDate = false
 
+local gSpellIdBeingCast = nil
+
 -- This list is shorter than before because I've done a better job of allowing items according to their categories.
 local gDefaultAllowedItems = {
     [ '2901'] = "used for profession and as a crude weapon", -- mining pick
@@ -414,6 +416,7 @@ local function initSavedVarsIfNec(force)
             dispositions = {}, -- table of item dispositions (key = itemId, value = ITEM_DISPOSITION_xxx)
             madeWeapon = false,
             xpFromLastGain = 0,
+            did = {}, -- 429=taxi, 895=hearth, 609=skills
         }
     end
 end
@@ -830,6 +833,13 @@ end
 -- already invalidated the run, or *will* invalidate it when the player dings.
 local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
 
+    if CharSaved.did[609] then
+        printWarning("You have previously violated a skill check - your mountaineer challenge is over")
+        flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+        playSound(ERROR_SOUND_FILE)
+        return
+    end
+
     local fatals, warnings, reminders, exceptions = getSkillCheckMessages()
 
     local warningCount = #fatals + #warnings
@@ -845,6 +855,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
                 for i = 1, #fatals do
                     printWarning(fatals[i])
                 end
+                CharSaved.did[609] = true
                 printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                 flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                 playSound(ERROR_SOUND_FILE)
@@ -1661,6 +1672,14 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^trailblazer$")
     p3, p4 = str:find("^tb$")
     if p1 or p3 then
+        if CharSaved.did[429] then
+            printWarning("You have flown on a taxi, so you cannot be a trailblazer")
+            return
+        end
+        if CharSaved.did[895] then
+            printWarning("You have hearthed, so you cannot be a trailblazer")
+            return
+        end
         CharSaved.isTrailblazer = not CharSaved.isTrailblazer
         if CharSaved.isTrailblazer then
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Delete your hearthstone. You cannot use flight paths. Normal vendor rules apply, but you are also allowed to use anything from a qualifying vendor who is in the open world. All traveling vendors qualify. Stationary vendors qualify if they are nowhere near a flight path."))
@@ -1910,6 +1929,7 @@ EventFrame:RegisterEvent('LEARNED_SPELL_IN_TAB')
 EventFrame:RegisterEvent('LOOT_READY')
 EventFrame:RegisterEvent('MERCHANT_CLOSED')
 EventFrame:RegisterEvent('MERCHANT_SHOW')
+EventFrame:RegisterEvent('PLAYER_CONTROL_LOST')
 EventFrame:RegisterEvent('PLAYER_ENTERING_WORLD')
 EventFrame:RegisterEvent('PLAYER_EQUIPMENT_CHANGED')
 EventFrame:RegisterEvent('PLAYER_LEVEL_UP')
@@ -1917,11 +1937,13 @@ EventFrame:RegisterEvent('PLAYER_REGEN_DISABLED')
 EventFrame:RegisterEvent('PLAYER_TARGET_CHANGED')
 EventFrame:RegisterEvent('PLAYER_UPDATE_RESTING')
 EventFrame:RegisterEvent('PLAYER_XP_UPDATE')
+EventFrame:RegisterEvent('TAXIMAP_OPENED')
 EventFrame:RegisterEvent('QUEST_COMPLETE')
 EventFrame:RegisterEvent('QUEST_DETAIL')
 EventFrame:RegisterEvent('QUEST_FINISHED')
 EventFrame:RegisterEvent('QUEST_PROGRESS')
 EventFrame:RegisterEvent('UNIT_SPELLCAST_SENT')
+EventFrame:RegisterEvent('UNIT_SPELLCAST_SUCCEEDED')
 
 EventFrame:SetScript('OnEvent', function(self, event, ...)
 
@@ -1955,6 +1977,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         if CharSaved.isTrailblazer  == nil then CharSaved.isTrailblazer = false         end
         if CharSaved.madeWeapon     == nil then CharSaved.madeWeapon    = (level >= 10) end
         if CharSaved.dispositions   == nil then CharSaved.dispositions  = {}            end
+        if CharSaved.did            == nil then CharSaved.did           = {}            end
         if AcctSaved.verbose        == nil then AcctSaved.verbose       = true          end
 
         -- MSL 2022-08-07
@@ -2370,21 +2393,57 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         local name = getSpellName(spellId)
         --print('UNIT_SPELLCAST_SENT', spellId, name)
 
+        gSpellIdBeingCast = spellId
+
         -- Do the following after a short delay.
         C_Timer.After(.1, function()
 
             if PLAYER_CLASS_ID == CLASS_HUNTER and spellId == 982 then -- Revive Pet
+
                 local msg = "Pets are mortal, you must abandon after reviving"
                 printWarning(msg)
                 flashWarning(msg)
                 playSound(ERROR_SOUND_FILE)
-            end
 
-            if not spellIsAllowed(spellId) then
+            elseif CharSaved.isTrailblazer and spellId == 8690 then
+
+                printWarning("Trailblazers cannot use a hearthstone")
+                flashWarning("You cannot use a hearthstone")
+                playSound(ERROR_SOUND_FILE)
+
+            elseif not spellIsAllowed(spellId) then
+
                 printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon")
                 flashWarning("You cannot use " .. name)
                 playSound(ERROR_SOUND_FILE)
+
             end
+
+        end)
+
+    elseif event == 'UNIT_SPELLCAST_SUCCEEDED' then
+
+        local name = getSpellName(gSpellIdBeingCast)
+        --print('UNIT_SPELLCAST_SUCCEEDED', gSpellIdBeingCast, name)
+
+        -- Do the following after a short delay.
+        C_Timer.After(.1, function()
+
+            if gSpellIdBeingCast == 8690 then
+
+                CharSaved.did[895] = true
+                if CharSaved.isTrailblazer then
+                    printWarning("Trailblazer mountaineers cannot hearth")
+                    flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
+                    playSound(ERROR_SOUND_FILE)
+                    printWarning("You are no longer a trailblazer - you can now hearth and use flight paths, but you cannot buy from open world vendors anymore")
+                    CharSaved.isTrailblazer = false
+                    printInfo(whatAmI())
+                end
+
+            end
+
+            gSpellIdBeingCast = nil
 
         end)
 
@@ -2424,6 +2483,32 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 end
             end
         end
+
+    elseif event == 'TAXIMAP_OPENED' then
+
+        local mapSystemId = ...
+
+        if CharSaved.isTrailblazer and mapSystemId == Enum.UIMapSystem.Taxi then
+            printWarning("Trailblazers cannot use flying taxis!")
+            flashWarning("You cannot use flying taxis!")
+            playSound(ERROR_SOUND_FILE)
+        end
+
+    elseif event == 'PLAYER_CONTROL_LOST' then
+
+        C_Timer.After(5, function()
+            if UnitOnTaxi("player") then
+                CharSaved.did[429] = true
+                if CharSaved.isTrailblazer then
+                    printWarning("Trailblazer mountaineers cannot use flying taxis")
+                    flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
+                    playSound(ERROR_SOUND_FILE)
+                    printWarning("You are no longer a trailblazer - you can now hearth and use flight paths, but you cannot buy from open world vendors anymore")
+                    CharSaved.isTrailblazer = false
+                    printInfo(whatAmI())
+                end
+            end
+        end)
 
     end
 
