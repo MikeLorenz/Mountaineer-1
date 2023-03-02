@@ -10,7 +10,7 @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
-local ADDON_VERSION = '2.0.5' -- This should be the same as in the .toc file.
+local ADDON_VERSION = '2.1.0' -- This should be the same as in the .toc file.
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -303,6 +303,8 @@ local gLastMerchantUnitTargeted = nil
 local gSkillsAreUpToDate = false
 
 local gSpellIdBeingCast = nil
+
+local gPlayedFailedSound = false
 
 -- This list is shorter than before because I've done a better job of allowing items according to their categories.
 local gDefaultAllowedItems = {
@@ -838,7 +840,10 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
     if CharSaved.did[609] then
         printWarning("You have previously violated a skill check - your mountaineer challenge is over")
         flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-        playSound(I_HAVE_FAILED_SOUND)
+        if not gPlayedFailedSound then
+            playSound(I_HAVE_FAILED_SOUND)
+            gPlayedFailedSound = true
+        end
         return
     end
 
@@ -860,7 +865,10 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
                 CharSaved.did[609] = true
                 printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                 flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-                playSound(I_HAVE_FAILED_SOUND)
+                if not gPlayedFailedSound then
+                    playSound(I_HAVE_FAILED_SOUND)
+                    gPlayedFailedSound = true
+                end
             else
                 if #warnings > 0 then
                     for i = 1, #warnings do
@@ -2240,6 +2248,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                                  and p >= 50 ) -- only play the sound if player xp is past the halfway point for the level
                             then
                                 playSound(ERROR_SOUND_FILE)
+                                flashWarning("SKILL CHECK WARNING!")
                             end
                             checkSkills()
                             break
@@ -2437,7 +2446,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 if CharSaved.isTrailblazer then
                     printWarning("Trailblazer mountaineers cannot hearth")
                     flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
-                    playSound(I_HAVE_FAILED_SOUND)
+                    if not gPlayedFailedSound then
+                        playSound(I_HAVE_FAILED_SOUND)
+                        gPlayedFailedSound = true
+                    end
                     printWarning("You are no longer a trailblazer - you can now hearth and use flight paths, but you cannot buy from open world vendors anymore")
                     CharSaved.isTrailblazer = false
                     printInfo(whatAmI())
@@ -2504,7 +2516,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 if CharSaved.isTrailblazer then
                     printWarning("Trailblazer mountaineers cannot use flying taxis")
                     flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
-                    playSound(I_HAVE_FAILED_SOUND)
+                    if not gPlayedFailedSound then
+                        playSound(I_HAVE_FAILED_SOUND)
+                        gPlayedFailedSound = true
+                    end
                     printWarning("You are no longer a trailblazer - you can now hearth and use flight paths, but you cannot buy from open world vendors anymore")
                     CharSaved.isTrailblazer = false
                     printInfo(whatAmI())
