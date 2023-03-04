@@ -949,16 +949,39 @@ local function itemIsUncraftable(t)
 
 end
 
-local function itemIsARealWeapon(t)
+local function itemRequiresSelfMadeWeapon(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
+    local classId, subclassId
+
     if type(t) == 'table' then
-        return (t.classId == Enum.ItemClass.Weapon and t.subclassId ~= Enum.ItemWeaponSubclass.FishingPole)
+        classId = t.classId
+        subclassId = t.subclassId
     elseif type(t) == 'string' or type(t) == 'number' then
-        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(t)
-        return (classId == Enum.ItemClass.Weapon and subclassId ~= Enum.ItemWeaponSubclass.FishingPole)
+        _, _, _, _, _, _, _, _, _, _, _, classId, subclassId = GetItemInfo(t)
     end
+
+    if classId == Enum.ItemClass.Weapon then
+        if subclassId ~= Enum.ItemWeaponSubclass.FishingPole
+        then
+            return true
+        end
+    end
+
+    if classId == Enum.ItemClass.Armor then
+        if subclassId == Enum.ItemArmorSubclass.Shield
+        or subclassId == Enum.ItemArmorSubclass.Libram
+        or subclassId == Enum.ItemArmorSubclass.Idol
+        or subclassId == Enum.ItemArmorSubclass.Totem
+        or subclassId == Enum.ItemArmorSubclass.Sigil
+        or subclassId == Enum.ItemArmorSubclass.Relic
+        then
+            return true
+        end
+    end
+
+    return false
 
 end
 
@@ -1289,8 +1312,8 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
     if not source then
 
-        if itemIsARealWeapon(t) and not CharSaved.madeWeapon then
-            return 0, t.link, "cannot use weapons until crafting one of your own"
+        if itemRequiresSelfMadeWeapon(t) and not CharSaved.madeWeapon then
+            return 0, t.link, "until you equip a self-crafted weapon"
         end
 
         if itemIsGray(t) then
@@ -1359,7 +1382,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 1, t.link, "self-made"
         end
 
-        if itemIsARealWeapon(t) and not CharSaved.madeWeapon then
+        if itemRequiresSelfMadeWeapon(t) and not CharSaved.madeWeapon then
             CharSaved.dispositions[t.itemId] = nil
             return 0, t.link, "cannot use weapons until crafting one of your own"
         end
@@ -1615,13 +1638,23 @@ local function isItemAllowed(itemId)
 
 end
 
-local function checkInventory()
-    local warningCount = 0
+local function inventoryWarnings()
+    local msgs = {}
     for slot = 0, 18 do
         local itemId = getInventoryItemID('player', slot)
         if itemId then
             -- If there's an item in the slot, check it.
             local status, link, why = itemCanBeUsed(itemId)
+            --print(status, link, why)
+
+            if not CharSaved.madeWeapon and slot == SLOT_OFF_HAND then
+                status = 0
+                why = "cannot equip the off-hand/shield slot until crafting your own weapon"
+            elseif not CharSaved.madeWeapon and slot == SLOT_RANGED then
+                status = 0
+                why = "cannot equip the ranged slot until crafting your own weapon"
+            end
+
             --print("slot", slot, ":", itemId, status, link, why)
             if status == 0 then
                 if why then
@@ -1629,19 +1662,23 @@ local function checkInventory()
                 else
                     why = ''
                 end
-                printWarning(link .. " should be unequipped " .. why)
-                warningCount = warningCount + 1
+                msgs[#msgs+1] = link .. " should be unequipped " .. why
             end
         end
     end
+    return msgs
+end
 
-    if warningCount == 0 then
+local function checkInventory()
+    local msgs = inventoryWarnings()
+    if #msgs == 0 then
         printGood("All equipped items are OK")
     else
+        for _, msg in ipairs(msgs) do
+            printWarning(msg)
+        end
         playSound(ERROR_SOUND_FILE)
     end
-
-    return warningCount
 end
 
 --[[
@@ -2050,7 +2087,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                         --print(" slot=", slot, " itemId=", itemId, " name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice)
                         if slot == SLOT_MAIN_HAND or slot == SLOT_OFF_HAND or slot == SLOT_RANGED or slot == SLOT_AMMO then
                             -- The player must remove any items in the lower slots.
-                            allowOrDisallowItem(itemId, false)
                             PickupInventoryItem(slot)
                             PutItemInBackpack()
                             printInfo("Unequipped " .. link .. " (" .. itemId .. ")")
@@ -2178,34 +2214,18 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         -- Do the following after a short delay.
         C_Timer.After(.3, function()
-
-            local nBadItems = 0
-            local status, link, why
-
-            -- Look at each character slot...
-            for slot = 0, 18 do
-                local itemId = getInventoryItemID("player", slot)
-                --print('PLAYER_REGEN_DISABLED:', slot, itemId)
-                if itemId then
-                    -- If there's an item in the slot, check it.
-                    itemId = tostring(itemId)
-                    status, link, why = itemCanBeUsed(itemId)
-                    if status == 0 then
-                        nBadItems = nBadItems + 1
-                        printWarning("Unequip " .. link .. " (" .. why .. ")")
-                    end
-                end
-            end
-
-            if nBadItems > 0 then
+            local msgs = inventoryWarnings()
+            if #msgs > 0 then
                 playSound(ERROR_SOUND_FILE)
-                if nBadItems == 1 then
-                    flashWarning("Unequip " .. link)
+                for _, msg in ipairs(msgs) do
+                    printWarning(msg)
+                end
+                if #msgs == 1 then
+                    flashWarning(msgs[1])
                 else
-                    flashWarning("Unequip " .. nBadItems .. " disallowed items")
+                    flashWarning("Unequip " .. #msgs .. " disallowed items")
                 end
             end
-
         end)
 
     elseif event == 'PLAYER_LEVEL_UP' then
@@ -2305,7 +2325,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                         flashWarning(msg)
                     elseif status == 1 then
                         if not CharSaved.madeWeapon then
-                            if itemIsARealWeapon(itemId) then
+                            if itemRequiresSelfMadeWeapon(itemId) then
                                 if CharSaved.dispositions[itemId] == ITEM_DISPOSITION_SELF_MADE then
                                     DoEmote('CHEER')
                                     printGood("Congratulations, you just equipped your first self-made weapon!!!")
