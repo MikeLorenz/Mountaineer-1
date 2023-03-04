@@ -514,73 +514,6 @@ local function setXPFromLastGain(xp)
     CharSaved.xpFromLastGain = xp
 end
 
-local function dumpSpell(spellId)
-    local name, rank, icon, castTime, minRange, maxRange = GetSpellInfo(spellId)
-    print(name
-        .. (rank and ' (rank ' .. tostring(rank) .. ')' or '')
-        .. '  castTime=' .. tostring(castTime)
-        .. '  minRange=' .. tostring(minRange)
-        .. '  maxRange=' .. tostring(maxRange)
-    )
-end
-
-local function dumpQuests()
-    local i = 1
-    local isClassQuest = false
-    while GetQuestLogTitle(i) do
-        local title, level, suggestedGroup, isHeader, isCollapsed, isComplete, frequency, questID, startEvent, displayQuestID, isOnMap, hasLocalPOI, isTask, isStory = GetQuestLogTitle(i);
-        if isHeader then
-            printGood(title)
-            isClassQuest = (title == PLAYER_CLASS_NAME)
-        else
-            printInfo("[" .. level .. "] " .. questID .. ": " .. title .. (isTask and " (task)" or " -") .. (isStory and " (story)" or " -") .. (isComplete and " (done)" or " -") .. (isClassQuest and " (class)" or " -"))
-        end
-        i = i + 1
-    end
-end
-
-local function dumpBags()
-    for bag = 0, NUM_BAG_SLOTS do
-        if getContainerNumSlots(bag) > 0 then
-            print("=== Bag " .. bag .. " ===")
-            for slot = 1, getContainerNumSlots(bag) do
-                local texture, stackCount, isLocked, quality, isReadable, hasLoot, hyperlink, isFiltered, hasNoValue, itemId, isBound = getContainerItemInfo(bag, slot)
-                if texture then
-                    print(tostring(hyperlink)
-                        .. '  id='      .. tostring(itemId)
-                        .. '  quality=' .. tostring(quality)
-                        .. '  count='   .. tostring(stackCount)
-                        .. '  texture=' .. tostring(texture)
-                        .. (isLocked    and '  (locked)'    or '')
-                        .. (isReadable  and '  (readable)'  or '')
-                        .. (isFiltered  and '  (filtered)'  or '')
-                        .. (isBound     and '  (bound)'     or '')
-                        .. (hasNoValue  and '  (novalue)'   or '')
-                    )
-                end
-            end
-        end
-    end
-end
-
-local function dumpInventory(unit)
-    unit = unit or 'player'
-    for slot = 0, 23 do -- need to iterate through every slot, this does not include items in bag I think, need to get the ID's for these from the emulator
-        local itemId = getInventoryItemID(unit, slot)
-        local link = GetInventoryItemLink(unit, slot)
-        if link then
-            print(slot, itemId, link, printableLink(link))
-        end
-    end
-end
-
-local function dumpSkills()
-    for i = 1, GetNumSkillLines() do
-        local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
-        print(name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc)
-    end
-end
-
 local function whatAmI()
     initSavedVarsIfNec()
     return "You are a"
@@ -608,20 +541,6 @@ local function getNonUsableSpellNames(class)
     return table.concat(t, ', ')
 end
 
-local function dumpUsableSpells()
-    for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
-        local className = GetClassInfo(classId)
-        print(string.upper(className) .. ":", getUsableSpellNames(classId))
-    end
-end
-
-local function dumpNonUsableSpells()
-    for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
-        local className = GetClassInfo(classId)
-        print(string.upper(className) .. ":", getNonUsableSpellNames(classId))
-    end
-end
-
 local function printSpellsICanAndCannotUse()
     local level = UnitLevel('player');
     if CharSaved.madeWeapon then
@@ -641,6 +560,10 @@ local function spellIsAllowed(spellId)
     end
     return true
 end
+
+--[[
+DUMP
+]]
 
 -- Allows or disallows an item (or forgets an item if allow == nil). Returns true if the item was found and modified. Returns false if there was an error.
 local function allowOrDisallowItem(itemStr, allow, userOverride)
@@ -1233,12 +1156,12 @@ end
 @@  BEGIN Table of Usable Items (see the Mountaineer document)                  @@
 @@                                                                              @@
 @@  This function can be called in one of two modes:                            @@
-@@      No unitId arguments:                                                    @@
+@@      No source arguments:                                                    @@
 @@          This is typically from a player request about an item where we      @@
 @@          don't know how they got the item. The best we can do it see if      @@
 @@          it meets any of the special item criteria and advise them           @@
 @@          accordingly.                                                        @@
-@@      Exactly one non-nil unitId argument:                                    @@
+@@      source & sourceId arguments provided:                                   @@
 @@          Given the origin of the item, the function can make a decision      @@
 @@          about whether the item is usable.                                   @@
 @@                                                                              @@
@@ -1250,9 +1173,9 @@ end
 @@      String:                                                                 @@
 @@          The link for the item                                               @@
 @@      String:                                                                 @@
-@@          If exactly one unitId argument is passed, the text should fit       @@
+@@          If source and sourceId arguments are passed, the text should fit    @@
 @@          with this: Item allowed (...) or Item not allowed (...)             @@
-@@          If no unitId arguments are passed, the text is longer, providing    @@
+@@          If no source arguments are passed, the text is longer, providing    @@
 @@          a more complete explanation, as you might find in the document.     @@
 @@                                                                              @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -1869,44 +1792,9 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    p1, p2 = str:find("^dq$")
-    if p1 then
-        dumpQuests()
-        return
-    end
-
-    p1, p2 = str:find("^db$")
-    if p1 then
-        dumpBags()
-        return
-    end
-
-    p1, p2 = str:find("^di$")
-    if p1 then
-        dumpInventory()
-        return
-    end
-
-    p1, p2 = str:find("^ds$")
-    if p1 then
-        dumpSkills()
-        return
-    end
-
-    p1, p2 = str:find("^dus$")
-    if p1 then
-        printGood("=== USABLE ===")
-        dumpUsableSpells()
-        printGood("=== NON-USABLE ===")
-        dumpNonUsableSpells()
-        return
-    end
-
-    p1, p2, arg1 = str:find("^spell +(.*)$")
-    if p1 and arg1 then
-        dumpSpell(arg1)
-        return
-    end
+--[[
+DUMP
+]]
 
     print(colorText('ffff00', "/mtn lucky/hardtack"))
     print("   Switches you to lucky or hardtack mountaineer mode.")
