@@ -10,7 +10,7 @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
-local ADDON_VERSION = '2.1.0' -- This should be the same as in the .toc file.
+local ADDON_VERSION = '2.1.1' -- This should be the same as in the .toc file.
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
