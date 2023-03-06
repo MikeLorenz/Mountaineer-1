@@ -248,6 +248,7 @@ local function getInventoryItemID(unit, slot)
 end
 
 local function parseItemLink(link)
+    if not link then return nil end
     -- |cff9d9d9d|Hitem:3299::::::::20:257::::::|h[Fractured Canine]|h|r
     local _, _, id, text = link:find(".*|.*|Hitem:(%d+):.*|h%[(.*)%]|h|r")
     return id, text
@@ -308,10 +309,13 @@ local gPlayedFailedSound = false
 
 -- This list is shorter than before because I've done a better job of allowing items according to their categories.
 local gDefaultAllowedItems = {
+    [ '2686'] = "drink", -- thunder ale (listed as 0,0 misc consumable in wow)
+    [ '2894'] = "drink", -- rhapsody malt (listed as 0,0 misc consumable in wow)
     [ '2901'] = "used for profession and as a crude weapon", -- mining pick
     [ '3342'] = "looted from a chest", -- captain sander's shirt
     [ '3343'] = "looted from a chest", -- captain sander's booty bag
     [ '3344'] = "looted from a chest", -- captain sander's sash
+    [ '5956'] = "used for profession and as a crude weapon", -- blacksmith hammer
     [ '5976'] = "basic item used for guilds", -- guild tabard
     [ '6256'] = "used for profession and as a crude weapon", -- fishing pole
     [ '6365'] = "used for profession and as a crude weapon", -- strong fishing pole
@@ -320,20 +324,26 @@ local gDefaultAllowedItems = {
     [ '6532'] = "used for fishing", -- bright baubles
     [ '6533'] = "used for fishing", -- aquadynamic fish attractor
     [ '7005'] = "used for profession and as a crude weapon", -- skinning knife
-    ['52021'] = "made via engineering", -- Iceblade Arrow
-    ['41164'] = "made via engineering", -- Mammoth Cutters
-    ['41165'] = "made via engineering", -- Saronite Razorheads
-    ['52020'] = "made via engineering", -- Shatter Rounds
-    ['10512'] = "made via engineering", -- Hi-Impact Mithril Slugs
-    ['15997'] = "made via engineering", -- Thorium Shells
-    ['10513'] = "made via engineering", -- Mithril Gyro-Shot
-    ['23772'] = "made via engineering", -- Fel Iron Shells
     [ '8067'] = "made via engineering", -- Crafted Light Shot
     [ '8068'] = "made via engineering", -- Crafted Heavy Shot
     [ '8069'] = "made via engineering", -- Crafted Solid Shot
-    ['23773'] = "made via engineering", -- Adamantite Shells
+    ['10512'] = "made via engineering", -- Hi-Impact Mithril Slugs
+    ['10513'] = "made via engineering", -- Mithril Gyro-Shot
+    ['15997'] = "made via engineering", -- Thorium Shells
     ['18042'] = "make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
+    ['22250'] = "used for profession", -- Herb Bag
+    ['23772'] = "made via engineering", -- Fel Iron Shells
+    ['23773'] = "made via engineering", -- Adamantite Shells
+    ['30745'] = "used for profession", -- Heavy Toolbox
+    ['30746'] = "used for profession", -- Mining Sack
+    ['30747'] = "used for profession", -- Gem Pouch
+    ['30748'] = "used for profession", -- Enchanter's Satchel
     ['33803'] = "made via engineering", -- Adamantite Stinger
+    ['39489'] = "used for profession", -- Scribe's Satchel
+    ['41164'] = "made via engineering", -- Mammoth Cutters
+    ['41165'] = "made via engineering", -- Saronite Razorheads
+    ['52020'] = "made via engineering", -- Shatter Rounds
+    ['52021'] = "made via engineering", -- Iceblade Arrow
 }
 
 local gDefaultDisallowedItems = {
@@ -562,8 +572,14 @@ local function spellIsAllowed(spellId)
 end
 
 --[[
-DUMP
+=DUMP=
 ]]
+
+local function dumpItem(itemStr)
+    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(itemStr)
+    local id, _ = parseItemLink(link)
+    print('id=', id, 'name=', name, 'link=', link, 'rarity=', rarity, 'level=', level, 'minLevel=', minLevel, 'type=', type, 'subType=', subType, 'stackCount=', stackCount, 'equipLoc=', equipLoc, 'texture=', texture, 'sellPrice=', sellPrice, 'classId=', classId, 'subclassId=', subclassId, 'bindType=', bindType, 'expacId=', expacId, 'setId=', setId, 'isCraftingReagent=', isCraftingReagent)
+end
 
 -- Allows or disallows an item (or forgets an item if allow == nil). Returns true if the item was found and modified. Returns false if there was an error.
 local function allowOrDisallowItem(itemStr, allow, userOverride)
@@ -627,9 +643,9 @@ end
 -- Warnings are messages that the run will be invalidated on the next ding.
 -- Reminders are warnings that are 2+ levels away, so a ding is still OK.
 -- Exceptions are unexpected error messages.
-local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
+local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNotes)
 
-    local fatals, warnings, reminders, exceptions = {}, {}, {}, {}
+    local fatals, warnings, reminders, notes, exceptions = {}, {}, {}, {}, {}
 
     -- These are the only skills we care about.
     local skills = {
@@ -699,6 +715,9 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
                             fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
                         elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
                             warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1)
+                        else
+                            local untilLevel = math.floor(skill.rank / 5)
+                            notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
                         end
                     end
                 end
@@ -751,14 +770,14 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarnings)
 
     end
 
-    return fatals, warnings, reminders, exceptions
+    return fatals, warnings, reminders, notes, exceptions
 
 end
 
 -- Checks skills. Returns (warningCount, challengeIsOver).
 -- The warning count is the number of skills that are low enough to either have
 -- already invalidated the run, or *will* invalidate it when the player dings.
-local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
+local function checkSkills(hideMessageIfAllIsWell, hideWarningsAndNotes)
 
     if CharSaved.did[609] then
         printWarning("You have previously violated a skill check - your mountaineer challenge is over")
@@ -770,7 +789,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
         return
     end
 
-    local fatals, warnings, reminders, exceptions = getSkillCheckMessages()
+    local fatals, warnings, reminders, notes, exceptions = getSkillCheckMessages()
 
     local warningCount = #fatals + #warnings
     local challengeIsOver = #fatals > 0
@@ -780,7 +799,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
             printWarning(exceptions[i])
         end
     else
-        if not hideWarnings then
+        if not hideWarningsAndNotes then
             if #fatals > 0 then
                 for i = 1, #fatals do
                     printWarning(fatals[i])
@@ -809,6 +828,12 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarnings)
 
     if #fatals == 0 and #warnings == 0 and #reminders == 0 and not hideMessageIfAllIsWell then
         printGood("All skills are up to date")
+    end
+
+    if not hideWarningsAndNotes and #notes > 0 then
+        for i = 1, #notes do
+            printGood(notes[i])
+        end
     end
 
     return warningCount, challengeIsOver
@@ -886,7 +911,8 @@ local function itemRequiresSelfMadeWeapon(t)
     end
 
     if classId == Enum.ItemClass.Weapon then
-        if subclassId ~= Enum.ItemWeaponSubclass.FishingPole
+        if  subclassId ~= Enum.ItemWeaponSubclass.FishingPole
+        and subclassId ~= Enum.ItemWeaponSubclass.Generic
         then
             return true
         end
@@ -1563,7 +1589,7 @@ end
 
 local function inventoryWarnings()
     local msgs = {}
-    for slot = 0, 18 do
+    for slot = 1, 18 do
         local itemId = getInventoryItemID('player', slot)
         if itemId then
             -- If there's an item in the slot, check it.
@@ -1710,10 +1736,9 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2 = str:find("^check$")
     if p1 then
-        local level = UnitLevel('player');
+        checkInventory()
         local warningCount = checkSkills()
         gSkillsAreUpToDate = (warningCount == 0)
-        checkInventory()
         return
     end
 
@@ -1769,13 +1794,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2, arg1 = str:find("^id +(.*)$")
     if arg1 then
-        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent = GetItemInfo(arg1)
-        if link == nil then
-            printWarning("Item not found")
-            return
-        end
-        local id, _ = parseItemLink(link)
-        print(" id=", id, " name=", name, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice, " classId=", classId, " subclassId=", subclassId, " bindType=", bindType, " expacId=", expacId, " setId=", setId, " isCraftingReagent=", isCraftingReagent)
+        dumpItem(arg1)
         return
     end
 
@@ -1793,7 +1812,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     end
 
 --[[
-DUMP
+=DUMP=
 ]]
 
     print(colorText('ffff00', "/mtn lucky/hardtack"))
@@ -2138,7 +2157,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local xpMax = UnitXPMax('player')
             local level = UnitLevel('player');
 
-            local fatals, warnings, reminders, exceptions = getSkillCheckMessages()
+            local fatals, warnings, reminders, notes, exceptions = getSkillCheckMessages()
 
             if #fatals > 0 or #warnings > 0 or #reminders > 0 then
 
