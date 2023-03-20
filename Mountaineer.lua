@@ -952,73 +952,73 @@ local function itemIsFoodOrDrink(t)
 
 end
 
+-- These are all the drinks I could find on wowhead for WoW up to WotLK.
+-- Unfortunately WoW categorizes food & drinks as the same thing, so I had to make this list.
+local gDrinkIds = {
+    [  '159'] = 1, -- Refreshing Spring Water
+    [ '1179'] = 1, -- Ice Cold Milk
+    [ '1205'] = 1, -- Melon Juice
+    [ '1645'] = 1, -- Moonberry Juice
+    [ '1708'] = 1, -- Sweet Nectar
+    [ '2593'] = 1, -- Flask of Stormwind Tawny
+    [ '2594'] = 1, -- Flagon of Dwarven Honeymead
+    [ '2595'] = 1, -- Jug of Badlands Bourbon
+    [ '2596'] = 1, -- Skin of Dwarven Stout
+    [ '2723'] = 1, -- Bottle of Dalaran Noir
+    [ '4600'] = 1, -- Cherry Grog
+    [ '8766'] = 1, -- Morning Glory Dew
+    ['17196'] = 1, -- Holiday Spirits
+    ['17402'] = 1, -- Greatfather's Winter Ale
+    ['17403'] = 1, -- Steamwheedle Fizzy Spirits
+    ['17404'] = 1, -- Blended Bean Brew
+    ['18287'] = 1, -- Evermurky
+    ['18288'] = 1, -- Molasses Firewater
+    ['19299'] = 1, -- Fizzy Faire Drink
+    ['19300'] = 1, -- Bottled Winterspring Water
+    ['27860'] = 1, -- Purified Draenic Water
+    ['28399'] = 1, -- Filtered Draenic Water
+    ['29401'] = 1, -- Sparkling Southshore Cider
+    ['29454'] = 1, -- Silverwine
+    ['32453'] = 1, -- Star's Tears
+    ['32455'] = 1, -- Star's Lament
+    ['32667'] = 1, -- Bash Ale
+    ['32668'] = 1, -- Dos Ogris
+    ['32722'] = 1, -- Enriched Terocone Juice
+    ['33042'] = 1, -- Black Coffee
+    ['33444'] = 1, -- Pungent Seal Whey
+    ['33445'] = 1, -- Honeymint Tea
+    ['35954'] = 1, -- Sweetened Goat's Milk
+    ['37253'] = 1, -- Frostberry Juice
+    ['38429'] = 1, -- Blackrock Spring Water
+    ['38430'] = 1, -- Blackrock Mineral Water
+    ['38431'] = 1, -- Blackrock Fortified Water
+    ['38432'] = 1, -- Plugger's Blackrock Ale
+    ['38698'] = 1, -- Bitter Plasma
+    ['40035'] = 1, -- Honey Mead
+    ['40036'] = 1, -- Snowplum Brandy
+    ['40042'] = 1, -- Caraway Burnwine
+    ['40357'] = 1, -- Grizzleberry Juice
+    ['41731'] = 1, -- Yeti Milk
+    ['42777'] = 1, -- Crusader's Waterskin
+    ['43086'] = 1, -- Fresh Apple Juice
+    ['43236'] = 1, -- Star's Sorrow
+    ['44570'] = 1, -- Glass of Eversong Wine
+    ['44571'] = 1, -- Bottle of Silvermoon Port
+    ['44573'] = 1, -- Cup of Frog Venom Brew
+    ['44574'] = 1, -- Skin of Mulgore Firewater
+    ['44575'] = 1, -- Flask of Bitter Cactus Cider
+    ['44616'] = 1, -- Glass of Dalaran White
+    ['44617'] = 1, -- Glass of Dalaran Red
+    ['44618'] = 1, -- Glass of Aged Dalaran Red
+    ['44941'] = 1, -- Fresh-Squeezed Limeade
+}
+
 -- Returns true if the item is a drink.
 local function itemIsADrink(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    -- These are all the drinks I could find on wowhead for WoW up to WotLK.
-    -- Unfortunately WoW categorizes food & drinks as the same thing, so I had to make this list.
-    local drinkIds = {
-        [  '159'] = 1, -- Refreshing Spring Water
-        [ '1179'] = 1, -- Ice Cold Milk
-        [ '1205'] = 1, -- Melon Juice
-        [ '1645'] = 1, -- Moonberry Juice
-        [ '1708'] = 1, -- Sweet Nectar
-        [ '2593'] = 1, -- Flask of Stormwind Tawny
-        [ '2594'] = 1, -- Flagon of Dwarven Honeymead
-        [ '2595'] = 1, -- Jug of Badlands Bourbon
-        [ '2596'] = 1, -- Skin of Dwarven Stout
-        [ '2723'] = 1, -- Bottle of Dalaran Noir
-        [ '4600'] = 1, -- Cherry Grog
-        [ '8766'] = 1, -- Morning Glory Dew
-        ['17196'] = 1, -- Holiday Spirits
-        ['17402'] = 1, -- Greatfather's Winter Ale
-        ['17403'] = 1, -- Steamwheedle Fizzy Spirits
-        ['17404'] = 1, -- Blended Bean Brew
-        ['18287'] = 1, -- Evermurky
-        ['18288'] = 1, -- Molasses Firewater
-        ['19299'] = 1, -- Fizzy Faire Drink
-        ['19300'] = 1, -- Bottled Winterspring Water
-        ['27860'] = 1, -- Purified Draenic Water
-        ['28399'] = 1, -- Filtered Draenic Water
-        ['29401'] = 1, -- Sparkling Southshore Cider
-        ['29454'] = 1, -- Silverwine
-        ['32453'] = 1, -- Star's Tears
-        ['32455'] = 1, -- Star's Lament
-        ['32667'] = 1, -- Bash Ale
-        ['32668'] = 1, -- Dos Ogris
-        ['32722'] = 1, -- Enriched Terocone Juice
-        ['33042'] = 1, -- Black Coffee
-        ['33444'] = 1, -- Pungent Seal Whey
-        ['33445'] = 1, -- Honeymint Tea
-        ['35954'] = 1, -- Sweetened Goat's Milk
-        ['37253'] = 1, -- Frostberry Juice
-        ['38429'] = 1, -- Blackrock Spring Water
-        ['38430'] = 1, -- Blackrock Mineral Water
-        ['38431'] = 1, -- Blackrock Fortified Water
-        ['38432'] = 1, -- Plugger's Blackrock Ale
-        ['38698'] = 1, -- Bitter Plasma
-        ['40035'] = 1, -- Honey Mead
-        ['40036'] = 1, -- Snowplum Brandy
-        ['40042'] = 1, -- Caraway Burnwine
-        ['40357'] = 1, -- Grizzleberry Juice
-        ['41731'] = 1, -- Yeti Milk
-        ['42777'] = 1, -- Crusader's Waterskin
-        ['43086'] = 1, -- Fresh Apple Juice
-        ['43236'] = 1, -- Star's Sorrow
-        ['44570'] = 1, -- Glass of Eversong Wine
-        ['44571'] = 1, -- Bottle of Silvermoon Port
-        ['44573'] = 1, -- Cup of Frog Venom Brew
-        ['44574'] = 1, -- Skin of Mulgore Firewater
-        ['44575'] = 1, -- Flask of Bitter Cactus Cider
-        ['44616'] = 1, -- Glass of Dalaran White
-        ['44617'] = 1, -- Glass of Dalaran Red
-        ['44618'] = 1, -- Glass of Aged Dalaran Red
-        ['44941'] = 1, -- Fresh-Squeezed Limeade
-    }
-
-    return (drinkIds[t.itemId] == 1)
+    return (gDrinkIds[t.itemId] == 1)
 
 end
 
@@ -1049,7 +1049,7 @@ local function itemIsANormalBag(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    return (t.classId == Enum.ItemClass.Container and subclassId == 0) -- Container subclass of 0 means it's a standard bag.
+    return (t.classId == Enum.ItemClass.Container and t.subclassId == 0) -- Container subclass of 0 means it's a standard bag.
 
 end
 
@@ -1059,41 +1059,32 @@ local function itemIsASpecialContainer(t)
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (t.classId == Enum.ItemClass.Quiver)
-        or (t.classId == Enum.ItemClass.Container and subclassId > 0) -- Container subclass of 0 means it's a standard bag. Anything else is special.
+        or (t.classId == Enum.ItemClass.Container and t.subclassId > 0) -- Container subclass of 0 means it's a standard bag. Anything else is special.
 
 end
+
+-- I scoured wowhead for class quest reward items, and this is the list I came up with.
+-- I don't see anything in the WoW API where a quest is labelled as a class quest.
+-- The closest is the quest log headers, but collapsed quest headers present a problem.
+-- Sometime in the future maybe I can revisit this. (2023-02-21)
+local gClassQuestItems = {
+    --[[ Druid   ]] ["32387"]=1, ["15883"]=1, ["15882"]=1, ["22274"]=1, ["22272"]=1, ["22458"]=1, ["32481"]=1, ["15877"]=1, ["32449"]=1, ["16608"]=1, ["13446"]=1, ["15866"]=1,
+    --[[ Hunter  ]] ["20083"]=1, ["19991"]=1, ["19992"]=1, ["18714"]=1, ["18724"]=1, ["24136"]=1, ["18707"]=1, ["24138"]=1,
+    --[[ Mage    ]] ["37006"]=1, ["7514"]=1, ["11263"]=1, ["7513"]=1, ["20035"]=1, ["20037"]=1, ["20036"]=1, ["7515"]=1, ["9517"]=1, ["7508"]=1, ["9513"]=1, ["7507"]=1, ["9514"]=1, ["7509"]=1, ["7510"]=1, ["7512"]=1, ["9515"]=1, ["7511"]=1, ["9516"]=1,
+    --[[ Paladin ]] ["25549"]=1, ["25464"]=1, ["6953"]=1, ["30696"]=1, ["20620"]=1, ["20504"]=1, ["20512"]=1, ["20505"]=1, ["7083"]=1, ["6993"]=1, ["9607"]=1, ["6776"]=1, ["6866"]=1, ["18775"]=1, ["6916"]=1, ["18746"]=1, ["6775"]=1,
+    --[[ Priest  ]] ["19990"]=1, ["20082"]=1, ["20006"]=1, ["18659"]=1, ["23924"]=1, ["16605"]=1, ["23931"]=1, ["16604"]=1, ["16607"]=1, ["16606"]=1,
+    --[[ Rogue   ]] ["18160"]=1, ["25878"]=1, ["7676"]=1, ["30504"]=1, ["30505"]=1, ["8066"]=1, ["19984"]=1, ["20255"]=1, ["19982"]=1, ["7907"]=1, ["8432"]=1, ["8095"]=1, ["7298"]=1, ["7208"]=1, ["23921"]=1, ["23919"]=1,
+    --[[ Shaman  ]] ["20369"]=1, ["20503"]=1, ["20556"]=1, ["6636"]=1, ["6637"]=1, ["5175"]=1, ["5178"]=1, ["6654"]=1, ["5177"]=1, ["5176"]=1, ["20134"]=1, ["18807"]=1, ["18746"]=1, ["6635"]=1,
+    --[[ Warlock ]] ["18762"]=1, ["22244"]=1, ["20536"]=1, ["20534"]=1, ["20530"]=1, ["6900"]=1, ["22243"]=1, ["6898"]=1, ["15109"]=1, ["12642"]=1, ["15108"]=1, ["15106"]=1, ["18602"]=1, ["15107"]=1, ["15105"]=1, ["12293"]=1, ["4925"]=1, ["5778"]=1,
+    --[[ Warrior ]] ["20521"]=1, ["20130"]=1, ["20517"]=1, ["6851"]=1, ["6975"]=1, ["6977"]=1, ["6976"]=1, ["6783"]=1, ["6979"]=1, ["6983"]=1, ["6980"]=1, ["6985"]=1, ["7326"]=1, ["7328"]=1, ["7327"]=1, ["7329"]=1, ["7115"]=1, ["7117"]=1, ["7116"]=1, ["7118"]=1, ["7133"]=1, ["6978"]=1, ["6982"]=1, ["6981"]=1, ["6984"]=1, ["6970"]=1, ["6974"]=1, ["7120"]=1, ["7130"]=1, ["23429"]=1, ["23423"]=1, ["23431"]=1, ["23430"]=1, ["6973"]=1, ["6971"]=1, ["6966"]=1, ["6968"]=1, ["6969"]=1, ["6967"]=1, ["7129"]=1, ["7132"]=1,
+}
 
 -- Returns true if the item is a reward from a class-specific quest and is therefore allowed to be accepted as a quest reward.
 local function itemIsFromClassQuest(t)
 
     -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    -- I scoured wowhead for class quest reward items, and this is the list I came up with.
-    -- I don't see anything in the WoW API where a quest is labelled as a class quest.
-    -- The closest is the quest log headers, but collapsed quest headers present a problem.
-    -- Sometime in the future maybe I can revisit this. (2023-02-21)
-    local classQuestItems = {
-        -- Druid
-        ["32387"]=1, ["15883"]=1, ["15882"]=1, ["22274"]=1, ["22272"]=1, ["22458"]=1, ["32481"]=1, ["15877"]=1, ["32449"]=1, ["16608"]=1, ["13446"]=1, ["15866"]=1,
-        -- Hunter
-        ["20083"]=1, ["19991"]=1, ["19992"]=1, ["18714"]=1, ["18724"]=1, ["24136"]=1, ["18707"]=1, ["24138"]=1,
-        -- Mage
-        ["37006"]=1, ["7514"]=1, ["11263"]=1, ["7513"]=1, ["20035"]=1, ["20037"]=1, ["20036"]=1, ["7515"]=1, ["9517"]=1, ["7508"]=1, ["9513"]=1, ["7507"]=1, ["9514"]=1, ["7509"]=1, ["7510"]=1, ["7512"]=1, ["9515"]=1, ["7511"]=1, ["9516"]=1,
-        -- Paladin
-        ["25549"]=1, ["25464"]=1, ["6953"]=1, ["30696"]=1, ["20620"]=1, ["20504"]=1, ["20512"]=1, ["20505"]=1, ["7083"]=1, ["6993"]=1, ["9607"]=1, ["6776"]=1, ["6866"]=1, ["18775"]=1, ["6916"]=1, ["18746"]=1, ["6775"]=1,
-        -- Priest
-        ["19990"]=1, ["20082"]=1, ["20006"]=1, ["18659"]=1, ["23924"]=1, ["16605"]=1, ["23931"]=1, ["16604"]=1, ["16607"]=1, ["16606"]=1,
-        -- Rogue
-        ["18160"]=1, ["25878"]=1, ["7676"]=1, ["30504"]=1, ["30505"]=1, ["8066"]=1, ["19984"]=1, ["20255"]=1, ["19982"]=1, ["7907"]=1, ["8432"]=1, ["8095"]=1, ["7298"]=1, ["7208"]=1, ["23921"]=1, ["23919"]=1,
-        -- Shaman
-        ["20369"]=1, ["20503"]=1, ["20556"]=1, ["6636"]=1, ["6637"]=1, ["5175"]=1, ["5178"]=1, ["6654"]=1, ["5177"]=1, ["5176"]=1, ["20134"]=1, ["18807"]=1, ["18746"]=1, ["6635"]=1,
-        -- Warlock
-        ["18762"]=1, ["22244"]=1, ["20536"]=1, ["20534"]=1, ["20530"]=1, ["6900"]=1, ["22243"]=1, ["6898"]=1, ["15109"]=1, ["12642"]=1, ["15108"]=1, ["15106"]=1, ["18602"]=1, ["15107"]=1, ["15105"]=1, ["12293"]=1, ["4925"]=1, ["5778"]=1,
-        -- Warrior
-        ["20521"]=1, ["20130"]=1, ["20517"]=1, ["6851"]=1, ["6975"]=1, ["6977"]=1, ["6976"]=1, ["6783"]=1, ["6979"]=1, ["6983"]=1, ["6980"]=1, ["6985"]=1, ["7326"]=1, ["7328"]=1, ["7327"]=1, ["7329"]=1, ["7115"]=1, ["7117"]=1, ["7116"]=1, ["7118"]=1, ["7133"]=1, ["6978"]=1, ["6982"]=1, ["6981"]=1, ["6984"]=1, ["6970"]=1, ["6974"]=1, ["7120"]=1, ["7130"]=1, ["23429"]=1, ["23423"]=1, ["23431"]=1, ["23430"]=1, ["6973"]=1, ["6971"]=1, ["6966"]=1, ["6968"]=1, ["6969"]=1, ["6967"]=1, ["7129"]=1, ["7132"]=1,
-    }
-
-    return (classQuestItems[t.itemId] == 1)
+    return (gClassQuestItems[t.itemId] == 1)
 
 end
 
@@ -1126,53 +1117,53 @@ local function unitIsRare(unitId)
 
 end
 
+-- https://www.warcrafttavern.com/wow-classic/guides/hidden-special-vendor/
+-- The link above was missing some vendors that I added below. I'm sure there are others.
+local gOpenWorldVendorIds = {
+    [  '844'] = 1, -- Antonio Perelli
+    [  '954'] = 1, -- Kat Sampson
+    [ '1146'] = 1, -- Vharr
+    [ '1669'] = 1, -- Defias Profiteer
+    [ '1685'] = 1, -- Xandar Goodbeard
+    [ '2481'] = 1, -- Bliztik
+    [ '2672'] = 1, -- Cowardly Crosby
+    [ '2679'] = 1, -- Wenna Silkbeard
+    [ '2697'] = 1, -- Clyde Ranthal
+    [ '2698'] = 1, -- George Candarte
+    [ '2805'] = 1, -- Deneb Walker
+    [ '2843'] = 1, -- Jutak
+    [ '3134'] = 1, -- Kzixx
+    [ '3534'] = 1, -- Wallace the Blind
+    [ '3535'] = 1, -- Blackmoss the Fetid
+    [ '3536'] = 1, -- Kris Legace
+    [ '3537'] = 1, -- Zixil
+    [ '3552'] = 1, -- Alexandre Lefevre
+    [ '3682'] = 1, -- Vrang Wildgore
+    [ '3683'] = 1, -- Kiknikle
+    [ '3684'] = 1, -- Pizznukle
+    [ '3956'] = 1, -- Harklan Moongrove
+    [ '4085'] = 1, -- Nizzik
+    [ '4086'] = 1, -- Veenix
+    [ '8305'] = 1, -- Kixxle
+    [ '8678'] = 1, -- Jubie Gadgetspring
+    [ '9179'] = 1, -- Jazzrik
+    ['11557'] = 1, -- Meilosh
+    ['11874'] = 1, -- Masat T'andr
+    ['12245'] = 1, -- Vendor-Tron 1000
+    ['12246'] = 1, -- Super-Seller 680
+    ['12384'] = 1, -- Augustus the Touched
+    ['14371'] = 1, -- Shen'dralar Provisioner
+    ['15293'] = 1, -- Aendel Windspear
+    ['16015'] = 1, -- Vi'el
+}
+
 -- Returns true if the unit is a vendor approved by the Trailblazer challenge.
 local function unitIsOpenWorldVendor(unitId)
 
     unitId = unitId .. "";
     if unitId == '' or unitId == '0' then return false end
 
-    -- https://www.warcrafttavern.com/wow-classic/guides/hidden-special-vendor/
-    -- The link above was missing some vendors that I added below. I'm sure there are others.
-    local vendorIds = {
-        [  '844'] = 1, -- Antonio Perelli
-        [  '954'] = 1, -- Kat Sampson
-        [ '1146'] = 1, -- Vharr
-        [ '1669'] = 1, -- Defias Profiteer
-        [ '1685'] = 1, -- Xandar Goodbeard
-        [ '2481'] = 1, -- Bliztik
-        [ '2672'] = 1, -- Cowardly Crosby
-        [ '2679'] = 1, -- Wenna Silkbeard
-        [ '2697'] = 1, -- Clyde Ranthal
-        [ '2698'] = 1, -- George Candarte
-        [ '2805'] = 1, -- Deneb Walker
-        [ '2843'] = 1, -- Jutak
-        [ '3134'] = 1, -- Kzixx
-        [ '3534'] = 1, -- Wallace the Blind
-        [ '3535'] = 1, -- Blackmoss the Fetid
-        [ '3536'] = 1, -- Kris Legace
-        [ '3537'] = 1, -- Zixil
-        [ '3552'] = 1, -- Alexandre Lefevre
-        [ '3682'] = 1, -- Vrang Wildgore
-        [ '3683'] = 1, -- Kiknikle
-        [ '3684'] = 1, -- Pizznukle
-        [ '3956'] = 1, -- Harklan Moongrove
-        [ '4085'] = 1, -- Nizzik
-        [ '4086'] = 1, -- Veenix
-        [ '8305'] = 1, -- Kixxle
-        [ '8678'] = 1, -- Jubie Gadgetspring
-        [ '9179'] = 1, -- Jazzrik
-        ['11557'] = 1, -- Meilosh
-        ['11874'] = 1, -- Masat T'andr
-        ['12245'] = 1, -- Vendor-Tron 1000
-        ['12246'] = 1, -- Super-Seller 680
-        ['12384'] = 1, -- Augustus the Touched
-        ['14371'] = 1, -- Shen'dralar Provisioner
-        ['15293'] = 1, -- Aendel Windspear
-        ['16015'] = 1, -- Vi'el
-    }
-
-    return (vendorIds[unitId] == 1)
+    return (gOpenWorldVendorIds[unitId] == 1)
 
 end
 
