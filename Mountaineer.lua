@@ -278,7 +278,8 @@ local L = {
     ["You receive item"] = "You receive item",  -- The message you get when you get a quest reward or buy something from a merchant.
     ["You create"] = "You create",  -- The message you get when you create something.
     ["Professions"] = "Professions",  -- The heading for the section of the Skills dialog that contains your primary professions.
-    ["Unarmed"] = "Unarmed",  -- Secondary profession name as it appears in the Skills dialog.
+    ["Unarmed"] = "Unarmed",  -- Skill name as it appears in the Skills dialog.
+    ["Defense"] = "Defense",  -- Skill name as it appears in the Skills dialog.
     ["First Aid"] = "First Aid",  -- Secondary profession name as it appears in the Skills dialog.
     ["Fishing"] = "Fishing",  -- Secondary profession name as it appears in the Skills dialog.
     ["Cooking"] = "Cooking",  -- Secondary profession name as it appears in the Skills dialog.
@@ -650,6 +651,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
     -- These are the only skills we care about.
     local skills = {
         ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = L['Unarmed'] },
+        ['defense']   = { rank = 0, firstCheckLevel =  4, name = L['Defense'] },
         ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
         ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
         ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
@@ -688,7 +690,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
             else
 
                 -- The player has trained this skill.
-                if key == 'unarmed' then
+                if key == 'unarmed' or key == 'defense' then
                     local rankRequiredAtThisLevel = playerLevel * 5 - 15
                     local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
                     if skill.rank < rankRequiredAtThisLevel then
@@ -2301,7 +2303,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 local _, _, skill = text:find("Your skill in (.*) has increased")
                 if skill ~= nil then
                     skill = skill:lower()
-                    if skill == 'unarmed' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
+                    if skill == 'unarmed' or skill == 'defense' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
                         if not gSkillsAreUpToDate then
                             local warningCount = checkSkills(true, true)
                             if warningCount == 0 then
