@@ -416,15 +416,15 @@ local ITEM_DISPOSITION_SELF_MADE    = 10    -- items created by the player
 
 local functionQueue = Queue.new()
 
-local function initSavedVarsIfNec(force)
-    if force or AcctSaved == nil then
+local function initSavedVarsIfNec(forceAcct, forceChar)
+    if forceAcct or AcctSaved == nil then
         AcctSaved = {
             quiet = false,
             showMiniMap = false,
             verbose = true,
         }
     end
-    if force or CharSaved == nil then
+    if forceChar or CharSaved == nil then
         CharSaved = {
             isLucky = true,
             isTrailblazer = false,
@@ -782,7 +782,12 @@ end
 local function checkSkills(hideMessageIfAllIsWell, hideWarningsAndNotes)
 
     if CharSaved.did[609] then
-        printWarning("You have previously violated a skill check - your mountaineer challenge is over")
+        if type(CharSaved.did[609]) == 'string' then
+            printWarning("You have previously violated a skill check: \"" .. CharSaved.did[609] .. "\"")
+        else
+            printWarning("You have previously violated a skill check")
+        end
+        printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
         flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
         if not gPlayedFailedSound then
             playSound(I_HAVE_FAILED_SOUND)
@@ -806,7 +811,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarningsAndNotes)
                 for i = 1, #fatals do
                     printWarning(fatals[i])
                 end
-                CharSaved.did[609] = true
+                CharSaved.did[609] = fatals[1]
                 printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                 flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                 if not gPlayedFailedSound then
@@ -1793,7 +1798,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2 = str:find("^reset everything i really mean it$")
     if p1 then
-        initSavedVarsIfNec(true)
+        initSavedVarsIfNec(true, true)
         printInfo("All allowed/disallowed designations reset to 'factory' settings")
         return
     end
@@ -1908,6 +1913,12 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         printInfo("Loaded - type /mtn to access options and features")
         printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
 
+        -- If this is the first login for this character, clear all CharSaved
+        -- values in case the player rolled a previous toon with the same name.
+        if level == 1 and xp == 0 then
+            initSavedVarsIfNec(false, true)
+        end
+
         -- Prime the pump for getting spell subtext if needed somewhere later on.
         -- It looks like each spell has its own cache for subtext (spell ranks).
         for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
@@ -1942,7 +1953,17 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         -- Let the user know what mode they're playing in.
 
-        printInfo(whatAmI())
+        printGood(whatAmI())
+
+        if level == 1 and xp < 200 then
+            if CharSaved.isLucky then
+                printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack"))
+            end
+            if not CharSaved.isTrailblazer then
+                printInfo("If you want to do the trailblazer challenge, type " .. colorText('ffff00', "/mtn trailblazer"))
+            end
+        end
+
         if level >= 6 and not CharSaved.madeWeapon then
             printWarning("You have not yet made your self-crafted weapon. You need to do that before reaching level 10.")
             printSpellsICanAndCannotUse()
