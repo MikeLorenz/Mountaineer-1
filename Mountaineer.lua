@@ -886,8 +886,8 @@ local function itemIsUncraftable(t)
         end
 
         if t.subclassId == Enum.ItemArmorSubclass.Generic then
-            if equipLoc == INVTYPE_FINGER
-            or equipLoc == INVTYPE_NECK
+            if t.equipLoc == INVTYPE_FINGER
+            or t.equipLoc == INVTYPE_NECK
             then
                 return (gameVersion() == 1)
             end
