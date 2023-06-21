@@ -10,7 +10,7 @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
-local ADDON_VERSION = '2.1.1' -- This should be the same as in the .toc file.
+local ADDON_VERSION = '2.2.0' -- This should be the same as in the .toc file.
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -278,8 +278,6 @@ local L = {
     ["You receive item"] = "You receive item",  -- The message you get when you get a quest reward or buy something from a merchant.
     ["You create"] = "You create",  -- The message you get when you create something.
     ["Professions"] = "Professions",  -- The heading for the section of the Skills dialog that contains your primary professions.
-    ["Unarmed"] = "Unarmed",  -- Skill name as it appears in the Skills dialog.
-    ["Defense"] = "Defense",  -- Skill name as it appears in the Skills dialog.
     ["First Aid"] = "First Aid",  -- Secondary profession name as it appears in the Skills dialog.
     ["Fishing"] = "Fishing",  -- Secondary profession name as it appears in the Skills dialog.
     ["Cooking"] = "Cooking",  -- Secondary profession name as it appears in the Skills dialog.
@@ -333,6 +331,7 @@ local gDefaultAllowedItems = {
     ['15997'] = "made via engineering", -- Thorium Shells
     ['18042'] = "make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
     ['22250'] = "used for profession", -- Herb Bag
+    ['23247'] = "summer fire festival", -- Burning Blossom
     ['23772'] = "made via engineering", -- Fel Iron Shells
     ['23773'] = "made via engineering", -- Adamantite Shells
     ['30745'] = "used for profession", -- Heavy Toolbox
@@ -347,36 +346,8 @@ local gDefaultAllowedItems = {
     ['52021'] = "made via engineering", -- Iceblade Arrow
 }
 
+-- Currently there are none, but I want to leave this logic for possible future items.
 local gDefaultDisallowedItems = {
-    ['11285'] = "vendor-only", -- Jagged Arrow
-    [ '3030'] = "vendor-only", -- Razor Arrow
-    ['28056'] = "vendor-only", -- Blackflight Arrow
-    ['31737'] = "vendor-only", -- Timeless Arrow
-    ['28053'] = "vendor-only", -- Wicked Arrow
-    ['41586'] = "vendor-only", -- Terrorshaft Arrow
-    [ '2515'] = "vendor-only", -- Sharp Arrow
-    ['41584'] = "vendor-only", -- Frostbite Bullets
-    ['34581'] = "vendor-only", -- Mysterious Arrow
-    ['11284'] = "vendor-only", -- Accurate Slugs
-    [ '2519'] = "vendor-only", -- Heavy Shot
-    [ '3033'] = "vendor-only", -- Solid Shot
-    ['31735'] = "vendor-only", -- Timeless Shell
-    [ '2512'] = "vendor-only", -- Rough Arrow
-    ['28061'] = "vendor-only", -- Ironbite Shell
-    ['10579'] = "requires a vendor-only item", -- Explosive Arrow
-    ['28060'] = "vendor-only", -- Impact Shot
-    ['19316'] = "vendor-only", -- Ice Threaded Arrow
-    ['19317'] = "vendor-only", -- Ice Threaded Bullet
-    ['32882'] = "vendor-only", -- Hellfire Shot
-    [ '2516'] = "vendor-only", -- Light Shot
-    ['31949'] = "vendor-only", -- Warden's Arrow
-    ['30611'] = "vendor-only", -- Halaani Razorshaft
-    ['24412'] = "vendor-only", -- Warden's Arrow
-    ['30612'] = "vendor-only", -- Halaani Grimshot
-    ['32761'] = "vendor-only", -- The Sarge's Bullet
-    ['32883'] = "vendor-only", -- Felbane Slugs
-    ['24417'] = "vendor-only", -- Scout's Arrow
-    ['34582'] = "vendor-only", -- Mysterious Shell
 }
 
 local gUsableSpellIds = {
@@ -385,10 +356,10 @@ local gUsableSpellIds = {
     [CLASS_HUNTER]  = {1494, 13163, 1130},
     [CLASS_ROGUE]   = {1784, 921, 5277},
     [CLASS_PRIEST]  = {585, 2050, 1243, 2052, 17, 586, 139},
-    [CLASS_SHAMAN]  = {403, 331, 8017, 8071, 2484, 332, 8018, 5730},
+    [CLASS_SHAMAN]  = {403, 331, 8017, 8071, 2484, 332, 324, 8018, 5730},
     [CLASS_MAGE]    = {168, 133, 1459, 5504, 587, 118},
     [CLASS_WARLOCK] = {686, 687, 702, 1454, 5782},
-    [CLASS_DRUID]   = {5185, 1126, 774, 8921, 5186},
+    [CLASS_DRUID]   = {5185, 467, 1126, 774, 8921, 5186},
 }
 
 local gNonUsableSpellIds = {
@@ -397,10 +368,10 @@ local gNonUsableSpellIds = {
     [CLASS_HUNTER]  = {2973, 1978, 3044, 5116, 14260},
     [CLASS_ROGUE]   = {1752, 2098, 53, 1776, 1757, 6760},
     [CLASS_PRIEST]  = {589, 591},
-    [CLASS_SHAMAN]  = {8042, 324, 529},
+    [CLASS_SHAMAN]  = {8042, 529},
     [CLASS_MAGE]    = {116, 2136, 143, 5143},
     [CLASS_WARLOCK] = {688, 348, 172, 695, 980},
-    [CLASS_DRUID]   = {8921, 467, 5177, 339},
+    [CLASS_DRUID]   = {8921, 5177, 339},
 }
 
 local ITEM_DISPOSITION_ALLOWED      =  1    -- /mtn allow, items fished, taken from chests, and self-made
@@ -650,8 +621,6 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
 
     -- These are the only skills we care about.
     local skills = {
-        ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = L['Unarmed'] },
-        ['defense']   = { rank = 0, firstCheckLevel =  4, name = L['Defense'] },
         ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
         ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
         ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
@@ -670,106 +639,88 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
         end
     end
 
-    if skills['unarmed'].rank == 0 then
+    -- Check the skill ranks against the expected rank.
+    for key, skill in pairs(skills) do
 
-        exceptions[#exceptions+1] = "Cannot find your unarmed skill - please go into your skill window and expand the \"Weapon Skills\" section"
+        if skill.rank == 0 then
 
-    else
+            -- The player has not yet trained this skill.
+            if playerLevel >= skill.firstCheckLevel - 3 then
+                local rank = skill.firstCheckLevel * 5
+                warnings[#warnings+1] = "You must train " .. skill.name .. " and level it to " .. rank .. " before you ding " .. skill.firstCheckLevel
+            end
 
-        -- Check the skill ranks against the expected rank.
-        for key, skill in pairs(skills) do
+        else
 
-            if skill.rank == 0 then
-
-                -- The player has not yet trained this skill.
-                if playerLevel >= skill.firstCheckLevel - 3 then
-                    local rank = skill.firstCheckLevel * 5
-                    reminders[#reminders+1] = "You must train " .. skill.name .. " and level it to " .. rank .. " before you ding " .. skill.firstCheckLevel
+            -- The player has trained this skill.
+            local rankRequiredAtThisLevel = playerLevel * 5
+            local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+            local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
+            local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
+            if levelsToFirstSkillCheck > 3 then
+                -- Don't check if more than 3 levels away from the first required level.
+            elseif levelsToFirstSkillCheck >= 2 then
+                -- The first skill check level is 2 or more levels away. Give them a gentle reminder.
+                if skill.rank < rankRequiredAtFirstCheckLevel then
+                    reminders[#reminders+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel
                 end
-
             else
-
-                -- The player has trained this skill.
-                if key == 'unarmed' or key == 'defense' then
-                    local rankRequiredAtThisLevel = playerLevel * 5 - 15
-                    local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
-                    if skill.rank < rankRequiredAtThisLevel then
-                        fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
-                    elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
-                        warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1)
-                    end
+                -- The player is either 1 level away from the first required level, or (more likely) they are past it.
+                if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
+                    -- At this level the player must be at least the minimum rank.
+                    fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
+                elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
+                    warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1)
                 else
-                    local rankRequiredAtThisLevel = playerLevel * 5
-                    local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
-                    local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
-                    local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
-                    if levelsToFirstSkillCheck > 3 then
-                        -- Don't check if more than 3 levels away from the first required level.
-                    elseif levelsToFirstSkillCheck >= 2 then
-                        -- The first skill check level is 2 or more levels away. Give them a gentle reminder.
-                        if skill.rank < rankRequiredAtFirstCheckLevel then
-                            reminders[#reminders+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel
-                        end
-                    else
-                        -- The player is either 1 level away from the first required level, or (more likely) they are past it.
-                        if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
-                            -- At this level the player must be at least the minimum rank.
-                            fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
-                        elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
-                            warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1)
-                        else
-                            local untilLevel = math.floor(skill.rank / 5)
-                            notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
-                        end
-                    end
+                    local untilLevel = math.floor(skill.rank / 5)
+                    notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
                 end
-
             end
 
-        end -- for
-
-        if not CharSaved.madeWeapon then
-            if playerLevel >= 10 then
-                fatals[#fatals+1] = "You did not make your self-crafted weapon before reaching level 10."
-            elseif playerLevel == 9 then
-                warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
-            elseif playerLevel >= 6 then
-                reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
-            end
         end
 
-        if CharSaved.isLazyBastard then
-            local sawProfessionsHeader = false
-            for i = 1, GetNumSkillLines() do
-                local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
-                if isHeader then
-                    if sawProfessionsHeader then
-                        -- We're at a new header after seeing the Professions header, so we're done.
-                        break
-                    elseif string.lower(name) == string.lower(L["Professions"]) then
-                        sawProfessionsHeader = true
-                        if not isExpanded then
-                            exceptions[#exceptions+1] = "Cannot find your primary professions - please go into your skill window and expand the \"" .. L["Professions"] .. "\" section"
-                        end
+    end -- for
+
+    if not CharSaved.madeWeapon then
+        if playerLevel >= 10 then
+            fatals[#fatals+1] = "You did not make your self-crafted weapon before reaching level 10."
+        elseif playerLevel == 9 then
+            warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
+        elseif playerLevel >= 6 then
+            reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
+        end
+    end
+
+    if CharSaved.isLazyBastard then
+        local sawProfessionsHeader = false
+        for i = 1, GetNumSkillLines() do
+            local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
+            if isHeader then
+                if sawProfessionsHeader then
+                    -- We're at a new header after seeing the Professions header, so we're done.
+                    break
+                elseif string.lower(name) == string.lower(L["Professions"]) then
+                    sawProfessionsHeader = true
+                    if not isExpanded then
+                        exceptions[#exceptions+1] = "Cannot find your primary professions - please go into your skill window and expand the \"" .. L["Professions"] .. "\" section"
                     end
+                end
+            else
+                if sawProfessionsHeader then
+                    -- It's a primary profession.
+                    if playerLevel >= 10 then
+                        fatals[#fatals+1] = "You are a lazy bastard mountaineer, but you did not drop your primary professions before reaching level 10."
+                    elseif playerLevel == 9 then
+                        warnings[#warnings+1] = "As a lazy bastard mountaineer, you need to drop all primary professions BEFORE reaching level 10"
+                    elseif playerLevel == 8 then
+                        reminders[#reminders+1] = "As a lazy bastard mountaineer, you will need to drop all primary professions before reaching level 10"
+                    end
+                    break
                 else
-                    if sawProfessionsHeader then
-                        -- It's a primary profession.
-                        if playerLevel >= 10 then
-                            fatals[#fatals+1] = "You are a lazy bastard mountaineer, but you did not drop your primary professions before reaching level 10."
-                        elseif playerLevel == 9 then
-                            warnings[#warnings+1] = "As a lazy bastard mountaineer, you need to drop all primary professions BEFORE reaching level 10"
-                        elseif playerLevel == 8 then
-                            reminders[#reminders+1] = "As a lazy bastard mountaineer, you will need to drop all primary professions before reaching level 10"
-                        end
-                        break
-                    else
-                        -- It's not a primary profession, we're not interested in it.
-                    end
+                    -- It's not a primary profession, we're not interested in it.
                 end
             end
         end
-
     end
 
     return fatals, warnings, reminders, notes, exceptions
@@ -959,76 +910,6 @@ local function itemIsFoodOrDrink(t)
 
 end
 
--- These are all the drinks I could find on wowhead for WoW up to WotLK.
--- Unfortunately WoW categorizes food & drinks as the same thing, so I had to make this list.
-local gDrinkIds = {
-    [  '159'] = 1, -- Refreshing Spring Water
-    [ '1179'] = 1, -- Ice Cold Milk
-    [ '1205'] = 1, -- Melon Juice
-    [ '1645'] = 1, -- Moonberry Juice
-    [ '1708'] = 1, -- Sweet Nectar
-    [ '2593'] = 1, -- Flask of Stormwind Tawny
-    [ '2594'] = 1, -- Flagon of Dwarven Honeymead
-    [ '2595'] = 1, -- Jug of Badlands Bourbon
-    [ '2596'] = 1, -- Skin of Dwarven Stout
-    [ '2723'] = 1, -- Bottle of Dalaran Noir
-    [ '4600'] = 1, -- Cherry Grog
-    [ '8766'] = 1, -- Morning Glory Dew
-    ['17196'] = 1, -- Holiday Spirits
-    ['17402'] = 1, -- Greatfather's Winter Ale
-    ['17403'] = 1, -- Steamwheedle Fizzy Spirits
-    ['17404'] = 1, -- Blended Bean Brew
-    ['18287'] = 1, -- Evermurky
-    ['18288'] = 1, -- Molasses Firewater
-    ['19299'] = 1, -- Fizzy Faire Drink
-    ['19300'] = 1, -- Bottled Winterspring Water
-    ['27860'] = 1, -- Purified Draenic Water
-    ['28399'] = 1, -- Filtered Draenic Water
-    ['29401'] = 1, -- Sparkling Southshore Cider
-    ['29454'] = 1, -- Silverwine
-    ['32453'] = 1, -- Star's Tears
-    ['32455'] = 1, -- Star's Lament
-    ['32667'] = 1, -- Bash Ale
-    ['32668'] = 1, -- Dos Ogris
-    ['32722'] = 1, -- Enriched Terocone Juice
-    ['33042'] = 1, -- Black Coffee
-    ['33444'] = 1, -- Pungent Seal Whey
-    ['33445'] = 1, -- Honeymint Tea
-    ['35954'] = 1, -- Sweetened Goat's Milk
-    ['37253'] = 1, -- Frostberry Juice
-    ['38429'] = 1, -- Blackrock Spring Water
-    ['38430'] = 1, -- Blackrock Mineral Water
-    ['38431'] = 1, -- Blackrock Fortified Water
-    ['38432'] = 1, -- Plugger's Blackrock Ale
-    ['38698'] = 1, -- Bitter Plasma
-    ['40035'] = 1, -- Honey Mead
-    ['40036'] = 1, -- Snowplum Brandy
-    ['40042'] = 1, -- Caraway Burnwine
-    ['40357'] = 1, -- Grizzleberry Juice
-    ['41731'] = 1, -- Yeti Milk
-    ['42777'] = 1, -- Crusader's Waterskin
-    ['43086'] = 1, -- Fresh Apple Juice
-    ['43236'] = 1, -- Star's Sorrow
-    ['44570'] = 1, -- Glass of Eversong Wine
-    ['44571'] = 1, -- Bottle of Silvermoon Port
-    ['44573'] = 1, -- Cup of Frog Venom Brew
-    ['44574'] = 1, -- Skin of Mulgore Firewater
-    ['44575'] = 1, -- Flask of Bitter Cactus Cider
-    ['44616'] = 1, -- Glass of Dalaran White
-    ['44617'] = 1, -- Glass of Dalaran Red
-    ['44618'] = 1, -- Glass of Aged Dalaran Red
-    ['44941'] = 1, -- Fresh-Squeezed Limeade
-}
-
--- Returns true if the item is a drink.
-local function itemIsADrink(t)
-
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
-
-    return (gDrinkIds[t.itemId] == 1)
-
-end
-
 -- Returns true if the item can be used for a profession, and is therefore allowed to be purchased, looted, or accepted as a quest reward.
 local function itemIsReagentOrUsableForAProfession(t)
 
@@ -1104,6 +985,15 @@ local function itemIsRare(t)
 
 end
 
+-- Returns true if the item is some kind of ammunition which lucky mountaineers can buy and hardtacks cannot.
+local function itemIsAmmo(t)
+
+    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+
+    return (t.classId == 6)
+
+end
+
 -- Returns true if the item's rarity is gray.
 local function itemIsGray(t)
 
@@ -1116,7 +1006,7 @@ end
 -- Returns true if the unit is labelled as rare or rare elite, meaning that it can be looted.
 local function unitIsRare(unitId)
 
-    unitId = unitId .. "";
+    unitId = (unitId or '') .. '';
     if unitId == '' or unitId == '0' then return false end
 
     local c = UnitClassification(unitId)
@@ -1220,9 +1110,6 @@ local function itemStatus(t, source, sourceId, isNewItem)
     if gDefaultAllowedItems[t.itemId] then
         return 1, t.link, gDefaultAllowedItems[t.itemId]
     end
-    if gDefaultDisallowedItems[t.itemId] then
-        return 0, t.link, gDefaultDisallowedItems[t.itemId]
-    end
 
     -- Get the existing disposition for the item, or nil if there is none.
     local dispo = CharSaved.dispositions[t.itemId]
@@ -1276,20 +1163,24 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 1, t.link, "reagents & items usable by a profession are always allowed"
         end
 
-        if itemIsADrink(t) then
-            return 1, t.link, "drinks are always allowed"
+        if itemIsFoodOrDrink(t) then
+            return 1, t.link, "food and drinks are always allowed"
+        end
+
+        if itemIsAmmo(t) then
+            if CharSaved.isLucky then
+                return 2, t.link, "lucky mountaineers can purchase ammo"
+            else
+                return 2, t.link, "hardtack mountaineers cannot purchase ammo"
+            end
         end
 
         if itemIsAQuestItem(t) then
             return 1, t.link, "quest items are always allowed"
         end
 
-        if itemIsFoodOrDrink(t) then
-            return 2, t.link, "food can be looted or accepted as quest rewards, but cannot be purchased; drinks are always allowed"
-        end
-
         if itemIsUncraftable(t) then
-            return 2, t.link, "uncraftable items can be looted or accepted as quest rewards, but cannot be purchased"
+            return 2, t.link, "uncraftable items can be looted or accepted as a quest reward, but cannot be purchased"
         end
 
         if itemIsRare(t) then
@@ -1340,10 +1231,22 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 1, t.link, "reagent / profession item"
         end
 
-        if itemIsADrink(t) then
+        if itemIsFoodOrDrink(t) then
             -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
             CharSaved.dispositions[t.itemId] = nil
-            return 1, t.link, "drink"
+            return 1, t.link, "food / drink"
+        end
+
+        if source == ITEM_SOURCE_PURCHASED then
+
+            if itemIsAmmo(t) then
+                if CharSaved.isLucky then
+                    return 1, t.link, "ammo"
+                else
+                    return 0, t.link, "hardtack mountaineers cannot purchase ammo"
+                end
+            end
+
         end
 
         if itemIsAQuestItem(t) then
@@ -1377,26 +1280,15 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
         end
 
-        if source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED then
-
-            if itemIsFoodOrDrink(t) then
-                if isLooted then
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                else
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                end
-                return 1, t.link, "food"
+        if itemIsUncraftable(t) then
+            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+            if source == ITEM_SOURCE_LOOTED then
+                return 1, t.link, "uncraftable looted item"
+            elseif source == ITEM_SOURCE_REWARDED then
+                return 1, t.link, "uncraftable quest reward"
+            else
+                return 0, t.link, "can only use uncraftable items that were looted or quest rewards"
             end
-
-            if itemIsUncraftable(t) then
-                if isLooted then
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                else
-                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                end
-                return 1, t.link, "uncraftable item"
-            end
-
         end
 
         if source == ITEM_SOURCE_LOOTED then
@@ -1546,10 +1438,6 @@ local function isItemAllowed(itemId)
     if gDefaultAllowedItems[itemId] then
 
         return true, gDefaultAllowedItems[itemId]
-
-    elseif gDefaultDisallowedItems[itemId] then
-
-        return false, gDefaultAllowedItems[itemId]
 
     elseif dispo == ITEM_DISPOSITION_ALLOWED then
 
@@ -2250,7 +2138,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                                 if CharSaved.dispositions[itemId] == ITEM_DISPOSITION_SELF_MADE then
                                     DoEmote('CHEER')
                                     printGood("Congratulations, you just equipped your first self-made weapon!!!")
-                                    printGood("All your spells and abilities are not unlocked.")
+                                    printGood("All your spells and abilities are now unlocked.")
                                     printGood("You can continue to use the weapon, or discard it.")
                                     CharSaved.madeWeapon = true
                                 end
@@ -2321,10 +2209,12 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         if level >= 3 then
             -- Do the following after a short delay.
             C_Timer.After(.3, function()
-                local _, _, skill = text:find("Your skill in (.*) has increased")
-                if skill ~= nil then
-                    skill = skill:lower()
-                    if skill == 'unarmed' or skill == 'defense' or skill == 'first aid' or skill == 'fishing' or skill == 'cooking' then
+                local _, _, skillName, skillLevel = text:find("Your skill in (.*) has increased to (.*)")
+                if skillName ~= nil then
+                    local skillNameOrig = skillName
+                    skillName = skillName:lower()
+                    if skillName == 'first aid' or skillName == 'fishing' or skillName == 'cooking' then
+                        local workComplete = false
                         if not gSkillsAreUpToDate then
                             local warningCount = checkSkills(true, true)
                             if warningCount == 0 then
@@ -2334,6 +2224,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                                 checkSkills()
                                 -- Congratulate them with the "WORK COMPLETE" sound.
                                 PlaySoundFile(WORK_COMPLETE_SOUND)
+                                workComplete = true
+                            end
+                        end
+                        if not workComplete then
+                            local untilLevel = skillLevel/5
+                            if skillLevel%5 == 0 and untilLevel > level then
+                                printGood("You won't have to improve " .. skillNameOrig .. " until level " .. untilLevel)
                             end
                         end
                     end
