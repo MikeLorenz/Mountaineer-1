@@ -1,25 +1,25 @@
 # Mountaineer
 
-A World of Warcraft addon to support the Hardcore [Mountaineer Challenge](http://tinyurl.com/hc-mountaineers). Supports Classic Era, Season of Mastery, TBC, or WotLK.
+A World of Warcraft addon to support the Hardcore [Mountaineer Challenge](http://tinyurl.com/hc-mountaineers). Supports Classic Era, Season of Mastery, TBC, and WotLK.
 
-This addon created by ManchegoMike ([Twitch](https://www.twitch.tv/ManchegoMike), [GitHub](https://github.com/ManchegoMike))
+This addon created by ManchegoMike ([Twitch](https://www.twitch.tv/ManchegoMike))
 
 This addon cannot be "judge and jury" in every aspect of your Mountaineer Challenge, nor is it the final arbiter of what items are or aren't allowed. It doesn't *prevent* you from doing anything; it's simply a way to alert you to some obvious issues and keep you on the straight and narrow.
 
-The one area where the addon *does* act as judge, jury, and executioner is in relation to your skill levels (unarmed, fishing, cooking, first aid). It will warn you if your skill levels are getting low, and if they drop far enough, it will tell you your run is over.
+The one area where the addon *does* act as judge, jury, and executioner is in relation to your secondary profession levels (fishing, cooking, first aid). It will warn you if your levels are getting low, and if they drop far enough, it will tell you your run is over.
 
 ## Installation
 
 You can do all of these steps *while the game is running*.
 
-* Click the green `Code` button near the top of this page and select `Download ZIP`.
+* If you use an addon installer, you're good to go. If you do it manually...
+* Download the [ZIP file](https://www.curseforge.com/wow/addons/mountaineer/files).
 * When the ZIP file has finished downloading, find it on your computer & unzip it into your Interface\AddOns folder.
-* The folder you just unzipped will most likely be named `Mountaineer-main`. Rename it to `Mountaineer`.
-* Start WoW, or type `/reload` if it's already running.
+* Start WoW, or if it's already running, type `/rl` to reload.
 
 ## Features
 
-* When your brand new level 1 character enters the game for the first time, all your gear is removed and placed into your backpack so you can sell it.
+* When your brand new level 1 character enters the game for the first time, all your weapons and shields are removed and placed into your backpack so you can sell them.
 
 * Each time you login, your gear is checked to make sure you're not wearing anything you shouldn't.
 
@@ -51,17 +51,49 @@ Wherever you see `{id/name/link}`, you can specify by id# or name or link. To sp
 
 Shows the current version of the addon.
 
-### /mtn sound on/off
-
-Turns addon sounds on or off.
-
 ### /mtn check
 
 Checks your skills and currently equipped items for conformance.
 
-### /mtn id {id/name/link}
+### /mtn lucky
 
-Identifies an item. Prints some text to show some details about the item.<br/>Examples: `/mtn id 7005`, `/mtn id Skinning Knife`
+Switches you to Lucky Mountaineer mode, meaning you are free to keep anything you loot from mobs.
+
+### /mtn hardtack
+
+Switches you to Hardtack Mountaineer mode, meaning you have stricter looting limitations. Most of your gear will have to be self-crafted.
+
+### /mtn trailblazer
+
+Toggles the Trailblazer achievement (see the [document](http://tinyurl.com/hc-mountaineers) for details).<br/>This achievement can be done in Lucky or Hardtack mode.
+
+### /mtn lazy
+
+Toggles the Lazy Bastard achievement (see the [document](http://tinyurl.com/hc-mountaineers) for details).<br/>This achievement can only be done in Lucky mode.
+
+### /mtn made weapon
+
+Toggles whether or not you made your self-crafted weapon.<br/>You will only need to use this if you installed the addon after you made your weapon.
+
+### /mtn spells
+
+Lists the abilities you may use before making your self-crafted weapon.
+
+### /mtn verbose
+
+Turns verbose mode on or off. When on, you will see all evaluation messages when receiving items. When off, all "item is allowed" messages will be suppressed, as well as "item is disallowed" for gray items.
+
+### /mtn sound on/off
+
+Turns addon sounds on or off.
+
+### /mtn minimap on/off
+
+Turns the minimap on or off.
+
+### /mtn check {id/name/link}
+
+Checks an item to see if you can use it.
 
 ### /mtn allow {id/name/link}
 
@@ -75,7 +107,7 @@ Disallows an item.<br/>Examples: `/mtn disallow 7005`, `/mtn disallow Skinning K
 
 Forgets any allow-or-disallow designation for an item. This will force the item to be re-evaluated then next time you loot or buy it.<br/>Examples: `/mtn forget 7005`, `/mtn forget Skinning Knife`
 
-### /mtn reset everything
+### /mtn reset everything i really mean it
 
 Resets all allow-or-disallow designations to their "factory" settings. This will lose all your custom allows & disallows and cannot be undone, so use with caution.
 
@@ -91,11 +123,13 @@ Resets all allow-or-disallow designations to their "factory" settings. This will
 
 ## Bug reports
 
-Please submit tickets via [GitHub](https://github.com/ManchegoMike/Mountaineer/issues).
+Send a message to **ManchegoMike** on Discord with any bugs or feature requests.
 
 ## Thanks
 
 Many thanks go to my fellow O.G. Mountaineers:
 
-- [Flipmode31](https://www.twitch.tv/flipmode31), who came up with the initial idea for the Mountaineer Challenge.
-- [Briadan](https://www.twitch.tv/briadan), who bravely tested several characters and provided valuable feedback.
+- [**Flipmode31**](https://www.twitch.tv/flipmode31), who came up with the initial idea for the Mountaineer Challenge
+- [**Briadan**](https://www.twitch.tv/briadan), who bravely tested several characters and provided valuable feedback
+- **Linkit**, who has valiantly tried several Mountaineers, including on a PvP server o.O
+- **voss_with_peanut**, who came up with the Trailblazer achievement
