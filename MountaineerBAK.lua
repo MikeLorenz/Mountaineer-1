@@ -1163,11 +1163,15 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 1, t.link, "reagents & items usable by a profession are always allowed"
         end
 
-        if itemIsFoodOrDrink(t) or itemIsAmmo(t) then
+        if itemIsFoodOrDrink(t) then
+            return 1, t.link, "food and drinks are always allowed"
+        end
+
+        if itemIsAmmo(t) then
             if CharSaved.isLucky then
-                return 2, t.link, "lucky mountaineers can use food, drink, and ammo that is looted, rewarded, or purchased"
+                return 2, t.link, "lucky mountaineers can purchase ammo"
             else
-                return 2, t.link, "hardtack mountaineers can use food, drink, and ammo that is looted, rewarded, but not purchased"
+                return 2, t.link, "hardtack mountaineers cannot purchase ammo"
             end
         end
 
@@ -1227,28 +1231,22 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 1, t.link, "reagent / profession item"
         end
 
-        if itemIsFoodOrDrink(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
-            return 1, t.link, "food/drink"
+        if itemIsFoodOrDrink(t) then
+            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+            CharSaved.dispositions[t.itemId] = nil
+            return 1, t.link, "food / drink"
         end
 
-        if itemIsAmmo(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
-            return 1, t.link, "ammo"
-        end
+        if source == ITEM_SOURCE_PURCHASED then
 
-        if itemIsFoodOrDrink(t) and source == ITEM_SOURCE_PURCHASED then
-            if CharSaved.isLucky then
-                return 1, t.link, "food/drink"
-            else
-                return 0, t.link, "hardtack mountaineers cannot purchase food/drink"
+            if itemIsAmmo(t) then
+                if CharSaved.isLucky then
+                    return 1, t.link, "ammo"
+                else
+                    return 0, t.link, "hardtack mountaineers cannot purchase ammo"
+                end
             end
-        end
 
-        if itemIsAmmo(t) and source == ITEM_SOURCE_PURCHASED then
-            if CharSaved.isLucky then
-                return 1, t.link, "ammo"
-            else
-                return 0, t.link, "hardtack mountaineers cannot purchase ammo"
-            end
         end
 
         if itemIsAQuestItem(t) then
