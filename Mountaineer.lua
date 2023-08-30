@@ -10,7 +10,7 @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
-local ADDON_VERSION = '2.2.0' -- This should be the same as in the .toc file.
+local ADDON_VERSION = '2.2.1' -- This should be the same as in the .toc file.
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -2305,6 +2305,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if gSpellsDisallowedForTrailblazer[spellId] then
 
                 CharSaved.did[895] = true
+
                 if CharSaved.isTrailblazer then
                     printWarning("Trailblazer mountaineers cannot hearth, Astral Recall, teleport, or portal")
                     flashWarning("YOU ARE NO LONGER A TRAILBLAZER")

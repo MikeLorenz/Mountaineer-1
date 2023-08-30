@@ -1,8 +1,8 @@
 ## Interface:11401
-## Title:Mountaineer
-## Notes:Supports Hardcore Mountaineer Challenge play
+## Title:Mountaineer|cFF00FF00 2.2.1|r
+## Notes:Supports Hardcore Mountaineer Challenge play (tinyurl.com/hc-mountaineers)
 ## Author: ManchegoMike
-## Version: 2.2.0
+## Version: 2.2.1
 ## SavedVariables: AcctSaved
 ## SavedVariablesPerCharacter: CharSaved
 
