@@ -1054,6 +1054,24 @@ local gOpenWorldVendorIds = {
     ['16015'] = 1, -- Vi'el
 }
 
+local gSpellsDisallowedForTrailblazer = {
+    [ 8690] = 1, -- Hearthstone
+    [  556] = 1, -- Astral Recall
+    [ 3561] = 1, -- Teleport
+    [ 3562] = 1, -- Teleport
+    [ 3563] = 1, -- Teleport
+    [ 3565] = 1, -- Teleport
+    [ 3566] = 1, -- Teleport
+    [ 3567] = 1, -- Teleport
+    [18960] = 1, -- Teleport
+    [10059] = 1, -- Portal
+    [11416] = 1, -- Portal
+    [11417] = 1, -- Portal
+    [11418] = 1, -- Portal
+    [11419] = 1, -- Portal
+    [11420] = 1, -- Portal
+}
+
 -- Returns true if the unit is a vendor approved by the Trailblazer challenge.
 local function unitIsOpenWorldVendor(unitId)
 
@@ -1563,7 +1581,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
             return
         end
         if CharSaved.did[895] then
-            printWarning("You have hearthed, so you cannot be a trailblazer")
+            printWarning("You have hearthed/teleported, so you cannot be a trailblazer")
             return
         end
         CharSaved.isTrailblazer = not CharSaved.isTrailblazer
@@ -2258,11 +2276,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
                 flashWarning(msg)
                 playSound(ERROR_SOUND_FILE)
 
-            elseif CharSaved.isTrailblazer and spellId == 8690 then
+            elseif CharSaved.isTrailblazer then
 
-                printWarning("Trailblazers cannot use a hearthstone")
-                flashWarning("You cannot use a hearthstone")
-                playSound(ERROR_SOUND_FILE)
+                if gSpellsDisallowedForTrailblazer[spellId] then
+                    printWarning("Trailblazers cannot use " .. (name or "that spell"))
+                    flashWarning("You cannot cast " .. (name or "that spell"))
+                    playSound(ERROR_SOUND_FILE)
+                end
 
             elseif not spellIsAllowed(spellId) then
 
@@ -2282,11 +2302,11 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         -- Do the following after a short delay.
         C_Timer.After(.1, function()
 
-            if gSpellIdBeingCast == 8690 then
+            if gSpellsDisallowedForTrailblazer[spellId] then
 
                 CharSaved.did[895] = true
                 if CharSaved.isTrailblazer then
-                    printWarning("Trailblazer mountaineers cannot hearth")
+                    printWarning("Trailblazer mountaineers cannot hearth, Astral Recall, teleport, or portal")
                     flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
                     if not gPlayedFailedSound then
                         playSound(I_HAVE_FAILED_SOUND)
