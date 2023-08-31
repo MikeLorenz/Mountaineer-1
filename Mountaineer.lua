@@ -642,21 +642,28 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
     -- Check the skill ranks against the expected rank.
     for key, skill in pairs(skills) do
 
+        local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
+        local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
+        local rankRequiredAtThisLevel = playerLevel * 5
+        local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+
         if skill.rank == 0 then
 
             -- The player has not yet trained this skill.
-            if playerLevel >= skill.firstCheckLevel - 3 then
-                local rank = skill.firstCheckLevel * 5
-                warnings[#warnings+1] = "You must train " .. skill.name .. " and level it to " .. rank .. " before you ding " .. skill.firstCheckLevel
+
+            if levelsToFirstSkillCheck <= 3 then
+                local text = "You must train " .. skill.name .. " and level it to " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel
+                if levelsToFirstSkillCheck > 1 then
+                    reminders[#reminders+1] = text
+                else
+                    warnings[#warnings+1] = text
+                end
             end
 
         else
 
             -- The player has trained this skill.
-            local rankRequiredAtThisLevel = playerLevel * 5
-            local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
-            local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
-            local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
+
             if levelsToFirstSkillCheck > 3 then
                 -- Don't check if more than 3 levels away from the first required level.
             elseif levelsToFirstSkillCheck >= 2 then
@@ -665,7 +672,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
                     reminders[#reminders+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel
                 end
             else
-                -- The player is either 1 level away from the first required level, or (more likely) they are past it.
+                -- The player is either 1 level away from the first required level, or they are past it.
                 if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
                     -- At this level the player must be at least the minimum rank.
                     fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
@@ -2085,7 +2092,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
                 local percentList = (#fatals > 0 or #warnings > 0)
                     and { 20, 35, 50, 60, 70, 80, 85, 90, 95 }
-                    or  { 25, 50, 75 }
+                    or  { 33, 66 }
 
                 local percent1 = getXPFromLastGain() * 100 / xpMax
                 local percent2 = xp * 100 / xpMax
