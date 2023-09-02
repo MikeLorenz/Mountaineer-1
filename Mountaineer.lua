@@ -404,7 +404,7 @@ local function initSavedVarsIfNec(forceAcct, forceChar)
             dispositions = {}, -- table of item dispositions (key = itemId, value = ITEM_DISPOSITION_xxx)
             madeWeapon = false,
             xpFromLastGain = 0,
-            did = {}, -- 429=taxi, 895=hearth, 609=skills, 779=failed ninja
+            did = {}, -- 429=taxi, 895=hearth, 609=skills, 779=failed punchy
         }
     end
 end
@@ -504,7 +504,7 @@ local function whatAmI()
         .. (CharSaved.isLucky       and " lucky"        or " hardtack")
         .. (CharSaved.isLazyBastard and " lazy bastard" or "")
         .. (CharSaved.isTrailblazer and " trailblazing" or "")
-        .. (CharSaved.isNinja       and " ninja"        or "")
+        .. (CharSaved.isPunchy      and " punchy"       or "")
         .. " mountaineer"
 end
 
@@ -644,7 +644,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
         end
     end
 
-    if CharSaved.isNinja and skills['unarmed'].rank == 0 then
+    if CharSaved.isPunchy and skills['unarmed'].rank == 0 then
 
         exceptions[#exceptions+1] = "Cannot find your unarmed skill - please go into your skill window and expand the \"Weapon Skills\" section"
 
@@ -677,19 +677,19 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
 
                 if (key == 'unarmed' or key == 'defense') then
 
-                    if CharSaved.isNinja then
+                    if CharSaved.isPunchy then
 
                         rankRequiredAtThisLevel = playerLevel * 5 - 15
                         rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
 
                         if skill.rank < rankRequiredAtThisLevel then
                             if not CharSaved.did[779] then
-                                warnings[#warnings+1] = "YOU FAILED THE NINJA ACHIEVEMENT"
+                                warnings[#warnings+1] = "YOU FAILED THE PUNCHY ACHIEVEMENT"
                             end
                             warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
-                            notes[#notes+1] = "You can continue the Mountaineer Challenge without the Ninja achievement"
+                            notes[#notes+1] = "You can continue the Mountaineer Challenge without the punchy achievement"
                             CharSaved.did[779] = true
-                            CharSaved.isNinja = false
+                            CharSaved.isPunchy = false
                         elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
                             warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you reach level " .. (playerLevel + 1)
                         end
@@ -1679,21 +1679,22 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    p1, p2 = str:find("^ninja$")
-    if p1 then
+    p1, p2 = str:find("^punchy$")
+    p3, p4 = str:find("^punch$")
+    if p1 or p3 then
         if playerLevel > 1 then
             printWarning("Sorry, you cannot change mountaineer achievements after level 1")
             return
         end
-        if not CharSaved.isNinja and CharSaved.did[779] then
-            printWarning("You cannot do the ninja challenge on this character since you have already failed it")
+        if not CharSaved.isPunchy and CharSaved.did[779] then
+            printWarning("You cannot do the punchy achievement on this character since you have already failed it")
             return
         end
-        CharSaved.isNinja = not CharSaved.isNinja
-        if CharSaved.isNinja then
+        CharSaved.isPunchy = not CharSaved.isPunchy
+        if CharSaved.isPunchy then
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You must maintain your unarmed and defense skills within 15 points of maximum at all times."))
         else
-            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Ninja mode off."))
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Punchy mode off."))
         end
         checkSkills(true)
         return
@@ -1817,8 +1818,8 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     print(colorText('ffff00', "/mtn trailblazer/lazy"))
     print("   Toggles the trailblazer and/or the lazy bastard achievement.")
 
-    print(colorText('ffff00', "/mtn ninja"))
-    print("   Toggles the ninja achievement.")
+    print(colorText('ffff00', "/mtn punchy"))
+    print("   Toggles the punchy achievement.")
 
     print(colorText('ffff00', "/mtn check"))
     print("   Checks your skills and currently equipped items for conformance.")
@@ -1963,8 +1964,8 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if not CharSaved.isTrailblazer then
                 printInfo("If you want to do the trailblazer achievement, type " .. colorText('ffff00', "/mtn trailblazer") .. " before reaching level 2")
             end
-            if not CharSaved.isNinja then
-                printInfo("If you want to do the ninja achievement, type " .. colorText('ffff00', "/mtn ninja") .. " before reaching level 2")
+            if not CharSaved.isPunchy then
+                printInfo("If you want to do the punchy achievement, type " .. colorText('ffff00', "/mtn punchy") .. " before reaching level 2")
             end
         end
 
