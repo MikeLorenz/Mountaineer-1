@@ -281,6 +281,8 @@ local L = {
     ["First Aid"] = "First Aid",  -- Secondary profession name as it appears in the Skills dialog.
     ["Fishing"] = "Fishing",  -- Secondary profession name as it appears in the Skills dialog.
     ["Cooking"] = "Cooking",  -- Secondary profession name as it appears in the Skills dialog.
+    ["Unarmed"] = "Unarmed",  -- Secondary profession name as it appears in the Skills dialog.
+    ["Defense"] = "Defense",  -- Secondary profession name as it appears in the Skills dialog.
 }
 
 local PLAYER_LOC, PLAYER_CLASS_NAME, PLAYER_CLASS_ID
@@ -352,7 +354,7 @@ local gDefaultDisallowedItems = {
 
 local gUsableSpellIds = {
     [CLASS_WARRIOR] = {2457, 6673, 100},
-    [CLASS_PALADIN] = {21084, 635, 465, 19740, 21082, 498, 639, 853, 1152},
+    [CLASS_PALADIN] = {20154, 21084, 635, 465, 19740, 21082, 498, 639, 853, 1152},
     [CLASS_HUNTER]  = {1494, 13163, 1130},
     [CLASS_ROGUE]   = {1784, 921, 5277},
     [CLASS_PRIEST]  = {585, 2050, 1243, 2052, 17, 586, 139},
@@ -402,7 +404,7 @@ local function initSavedVarsIfNec(forceAcct, forceChar)
             dispositions = {}, -- table of item dispositions (key = itemId, value = ITEM_DISPOSITION_xxx)
             madeWeapon = false,
             xpFromLastGain = 0,
-            did = {}, -- 429=taxi, 895=hearth, 609=skills
+            did = {}, -- 429=taxi, 895=hearth, 609=skills, 779=failed ninja
         }
     end
 end
@@ -499,9 +501,10 @@ end
 local function whatAmI()
     initSavedVarsIfNec()
     return "You are a"
-        .. (CharSaved.isLucky and " lucky" or " hardtack")
+        .. (CharSaved.isLucky       and " lucky"        or " hardtack")
         .. (CharSaved.isLazyBastard and " lazy bastard" or "")
         .. (CharSaved.isTrailblazer and " trailblazing" or "")
+        .. (CharSaved.isNinja       and " ninja"        or "")
         .. " mountaineer"
 end
 
@@ -624,6 +627,8 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
         ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
         ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
         ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
+        ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = L['Unarmed'] },
+        ['defense']   = { rank = 0, firstCheckLevel =  4, name = L['Defense'] },
     }
 
     local playerLevel = UnitLevel('player');
@@ -639,95 +644,128 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
         end
     end
 
-    -- Check the skill ranks against the expected rank.
-    for key, skill in pairs(skills) do
+    if CharSaved.isNinja and skills['unarmed'].rank == 0 then
 
-        local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
-        local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
-        local rankRequiredAtThisLevel = playerLevel * 5
-        local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+        exceptions[#exceptions+1] = "Cannot find your unarmed skill - please go into your skill window and expand the \"Weapon Skills\" section"
 
-        if skill.rank == 0 then
+    else
 
-            -- The player has not yet trained this skill.
+        -- Check the skill ranks against the expected rank.
+        for key, skill in pairs(skills) do
 
-            if levelsToFirstSkillCheck <= 3 then
-                local text = "You must train " .. skill.name .. " and level it to " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel
-                if levelsToFirstSkillCheck > 1 then
-                    reminders[#reminders+1] = text
-                else
-                    warnings[#warnings+1] = text
-                end
-            end
+            local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
+            local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
+            local rankRequiredAtThisLevel = playerLevel * 5
+            local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
 
-        else
+            if skill.rank == 0 then
 
-            -- The player has trained this skill.
+                -- The player has not yet trained this skill.
 
-            if levelsToFirstSkillCheck > 3 then
-                -- Don't check if more than 3 levels away from the first required level.
-            elseif levelsToFirstSkillCheck >= 2 then
-                -- The first skill check level is 2 or more levels away. Give them a gentle reminder.
-                if skill.rank < rankRequiredAtFirstCheckLevel then
-                    reminders[#reminders+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you ding " .. skill.firstCheckLevel
-                end
-            else
-                -- The player is either 1 level away from the first required level, or they are past it.
-                if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
-                    -- At this level the player must be at least the minimum rank.
-                    fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
-                elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
-                    warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you ding " .. (playerLevel + 1)
-                else
-                    local untilLevel = math.floor(skill.rank / 5)
-                    notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
-                end
-            end
-
-        end
-
-    end -- for
-
-    if not CharSaved.madeWeapon then
-        if playerLevel >= 10 then
-            fatals[#fatals+1] = "You did not make your self-crafted weapon before reaching level 10."
-        elseif playerLevel == 9 then
-            warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
-        elseif playerLevel >= 6 then
-            reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
-        end
-    end
-
-    if CharSaved.isLazyBastard then
-        local sawProfessionsHeader = false
-        for i = 1, GetNumSkillLines() do
-            local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
-            if isHeader then
-                if sawProfessionsHeader then
-                    -- We're at a new header after seeing the Professions header, so we're done.
-                    break
-                elseif string.lower(name) == string.lower(L["Professions"]) then
-                    sawProfessionsHeader = true
-                    if not isExpanded then
-                        exceptions[#exceptions+1] = "Cannot find your primary professions - please go into your skill window and expand the \"" .. L["Professions"] .. "\" section"
+                if levelsToFirstSkillCheck <= 3 then
+                    local text = "You must train " .. skill.name .. " and level it to " .. rankRequiredAtFirstCheckLevel .. " before you reach level " .. skill.firstCheckLevel
+                    if levelsToFirstSkillCheck > 1 then
+                        reminders[#reminders+1] = text
+                    else
+                        warnings[#warnings+1] = text
                     end
                 end
+
             else
-                if sawProfessionsHeader then
-                    -- It's a primary profession.
-                    if playerLevel >= 10 then
-                        fatals[#fatals+1] = "You are a lazy bastard mountaineer, but you did not drop your primary professions before reaching level 10."
-                    elseif playerLevel == 9 then
-                        warnings[#warnings+1] = "As a lazy bastard mountaineer, you need to drop all primary professions BEFORE reaching level 10"
-                    elseif playerLevel == 8 then
-                        reminders[#reminders+1] = "As a lazy bastard mountaineer, you will need to drop all primary professions before reaching level 10"
+
+                -- The player has trained this skill.
+
+                if (key == 'unarmed' or key == 'defense') then
+
+                    if CharSaved.isNinja then
+
+                        rankRequiredAtThisLevel = playerLevel * 5 - 15
+                        rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+
+                        if skill.rank < rankRequiredAtThisLevel then
+                            if not CharSaved.did[779] then
+                                warnings[#warnings+1] = "YOU FAILED THE NINJA ACHIEVEMENT"
+                            end
+                            warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
+                            notes[#notes+1] = "You can continue the Mountaineer Challenge without the Ninja achievement"
+                            CharSaved.did[779] = true
+                            CharSaved.isNinja = false
+                        elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
+                            warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you reach level " .. (playerLevel + 1)
+                        end
+
                     end
-                    break
+
                 else
-                    -- It's not a primary profession, we're not interested in it.
+
+                    if levelsToFirstSkillCheck > 3 then
+                        -- Don't check if more than 3 levels away from the first required level.
+                    elseif levelsToFirstSkillCheck >= 2 then
+                        -- The first skill check level is 2 or more levels away. Give them a gentle reminder.
+                        if skill.rank < rankRequiredAtFirstCheckLevel then
+                            reminders[#reminders+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you reach level " .. skill.firstCheckLevel
+                        end
+                    else
+                        -- The player is either 1 level away from the first required level, or they are past it.
+                        if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
+                            -- At this level the player must be at least the minimum rank.
+                            fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
+                        elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
+                            warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you reach level " .. (playerLevel + 1)
+                        else
+                            local untilLevel = math.floor(skill.rank / 5)
+                            notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
+                        end
+                    end
+
+                end
+
+            end
+
+        end -- for
+
+        if not CharSaved.madeWeapon then
+            if playerLevel >= 10 then
+                fatals[#fatals+1] = "You did not make your self-crafted weapon before reaching level 10."
+            elseif playerLevel == 9 then
+                warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
+            elseif playerLevel >= 6 then
+                reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
+            end
+        end
+
+        if CharSaved.isLazyBastard then
+            local sawProfessionsHeader = false
+            for i = 1, GetNumSkillLines() do
+                local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
+                if isHeader then
+                    if sawProfessionsHeader then
+                        -- We're at a new header after seeing the Professions header, so we're done.
+                        break
+                    elseif string.lower(name) == string.lower(L["Professions"]) then
+                        sawProfessionsHeader = true
+                        if not isExpanded then
+                            exceptions[#exceptions+1] = "Cannot find your primary professions - please go into your skill window and expand the \"" .. L["Professions"] .. "\" section"
+                        end
+                    end
+                else
+                    if sawProfessionsHeader then
+                        -- It's a primary profession.
+                        if playerLevel >= 10 then
+                            fatals[#fatals+1] = "You are a lazy bastard mountaineer, but you did not drop your primary professions before reaching level 10."
+                        elseif playerLevel == 9 then
+                            warnings[#warnings+1] = "As a lazy bastard mountaineer, you need to drop all primary professions BEFORE reaching level 10"
+                        elseif playerLevel == 8 then
+                            reminders[#reminders+1] = "As a lazy bastard mountaineer, you will need to drop all primary professions before reaching level 10"
+                        end
+                        break
+                    else
+                        -- It's not a primary profession, we're not interested in it.
+                    end
                 end
             end
         end
+
     end
 
     return fatals, warnings, reminders, notes, exceptions
@@ -1608,11 +1646,27 @@ SlashCmdList["MOUNTAINEER"] = function(str)
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "BEFORE you reach level 10, you must drop your primary professions and never take another one while leveling. All primary professions can be taken, dropped, and retaken before level 10. All secondary professions are required throughout your run as usual."))
             if not CharSaved.isLucky then
                 CharSaved.isLucky = true
-                printWarning("Your mode has been changed from hardtack to lucky")
+                printWarning("Your mode has been changed from hardtack to lucky.")
             end
         else
-            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Lazy bastard mode off"))
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Lazy bastard mode off."))
         end
+        return
+    end
+
+    p1, p2 = str:find("^ninja$")
+    if p1 then
+        if not CharSaved.isNinja and CharSaved.did[779] then
+            printWarning("You cannot do the ninja challenge on this character since you have already failed it")
+            return
+        end
+        CharSaved.isNinja = not CharSaved.isNinja
+        if CharSaved.isNinja then
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You must maintain your unarmed and defense skills within 15 points of maximum at all times."))
+        else
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Ninja mode off."))
+        end
+        checkSkills(true)
         return
     end
 
@@ -1622,7 +1676,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         if CharSaved.madeWeapon then
             printGood("You are now marked as having made your self-crafted weapon, congratulations! " .. colorText('ffffff', "All your spells and abilities are unlocked."))
         else
-            printGood("You are now marked as not yet having made your self-crafted weapon")
+            printGood("You are now marked as not yet having made your self-crafted weapon.")
             printSpellsICanAndCannotUse()
         end
         return
@@ -1732,7 +1786,10 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     print("   Switches you to lucky or hardtack mountaineer mode.")
 
     print(colorText('ffff00', "/mtn trailblazer/lazy"))
-    print("   Toggles the trailblazer and/or the lazy bastard challenge.")
+    print("   Toggles the trailblazer and/or the lazy bastard achievement.")
+
+    print(colorText('ffff00', "/mtn ninja"))
+    print("   Toggles the ninja achievement.")
 
     print(colorText('ffff00', "/mtn check"))
     print("   Checks your skills and currently equipped items for conformance.")
