@@ -1594,33 +1594,54 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     local p1, p2, p3, p4, cmd, arg1, match
     local override = true
+    local playerLevel = UnitLevel('player');
 
     str = str:lower()
 
     p1, p2 = str:find("^lucky$")
     if p1 then
-        CharSaved.isLucky = true
-        printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You can use any looted items."))
-        checkInventory()
+        if CharSaved.isLucky then
+            printGood(whatAmI())
+        else
+            if playerLevel > 1 then
+                printWarning("Sorry, you cannot change mountaineer mode after level 1")
+                return
+            end
+            CharSaved.isLucky = true
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You can use any looted items."))
+            checkInventory()
+        end
         return
     end
 
     p1, p2 = str:find("^hardtack$")
     p3, p4 = str:find("^ht$")
     if p1 or p3 then
-        CharSaved.isLucky = false
-        printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You CANNOT use looted items (with some exceptions, of course)."))
-        if CharSaved.isLazyBastard then
-            CharSaved.isLazyBastard = false
-            printWarning("Your lazy bastard challenge has been turned off")
+        if not CharSaved.isLucky then
+            printGood(whatAmI())
+        else
+            if playerLevel > 1 then
+                printWarning("Sorry, you cannot change mountaineer mode after level 1")
+                return
+            end
+            CharSaved.isLucky = false
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You CANNOT use looted items (with some exceptions, of course)."))
+            if CharSaved.isLazyBastard then
+                CharSaved.isLazyBastard = false
+                printWarning("Your lazy bastard challenge has been turned off")
+            end
+            checkInventory()
         end
-        checkInventory()
         return
     end
 
     p1, p2 = str:find("^trailblazer$")
     p3, p4 = str:find("^tb$")
     if p1 or p3 then
+        if playerLevel > 1 then
+            printWarning("Sorry, you cannot change mountaineer achievements after level 1")
+            return
+        end
         if CharSaved.did[429] then
             printWarning("You have flown on a taxi, so you cannot be a trailblazer")
             return
@@ -1641,6 +1662,10 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^lazy$")
     p3, p4 = str:find("^lb$")
     if p1 or p3 then
+        if playerLevel > 1 then
+            printWarning("Sorry, you cannot change mountaineer achievements after level 1")
+            return
+        end
         CharSaved.isLazyBastard = not CharSaved.isLazyBastard
         if CharSaved.isLazyBastard then
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "BEFORE you reach level 10, you must drop your primary professions and never take another one while leveling. All primary professions can be taken, dropped, and retaken before level 10. All secondary professions are required throughout your run as usual."))
@@ -1656,6 +1681,10 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 
     p1, p2 = str:find("^ninja$")
     if p1 then
+        if playerLevel > 1 then
+            printWarning("Sorry, you cannot change mountaineer achievements after level 1")
+            return
+        end
         if not CharSaved.isNinja and CharSaved.did[779] then
             printWarning("You cannot do the ninja challenge on this character since you have already failed it")
             return
@@ -1929,10 +1958,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         if level == 1 and xp < 200 then
             if CharSaved.isLucky then
-                printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack"))
+                printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack") .. " before reaching level 2")
             end
             if not CharSaved.isTrailblazer then
-                printInfo("If you want to do the trailblazer challenge, type " .. colorText('ffff00', "/mtn trailblazer"))
+                printInfo("If you want to do the trailblazer achievement, type " .. colorText('ffff00', "/mtn trailblazer") .. " before reaching level 2")
+            end
+            if not CharSaved.isNinja then
+                printInfo("If you want to do the ninja achievement, type " .. colorText('ffff00', "/mtn ninja") .. " before reaching level 2")
             end
         end
 
