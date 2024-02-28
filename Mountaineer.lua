@@ -11,6 +11,8 @@
 ]]
 
 local ADDON_VERSION = '2.2.1' -- This should be the same as in the .toc file.
+local function printpdb() end
+local pdb = printpdb
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -301,8 +303,18 @@ local gLastLootSourceGUID = ''
 local gLastQuestUnitTargeted = nil
 local gLastMerchantUnitTargeted = nil
 
+-- These are the skills we check.
+local gSkills = {
+    ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
+    ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
+    ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
+    ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = L['Unarmed'] },
+    ['defense']   = { rank = 0, firstCheckLevel =  4, name = L['Defense'] },
+}
+
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
 local gSkillsAreUpToDate = false
+local gSkillsAreReadyForLevel10 = false
 
 local gSpellIdBeingCast = nil
 
@@ -311,11 +323,34 @@ local gPlayedFailedSound = false
 -- This list is shorter than before because I've done a better job of allowing items according to their categories.
 local gDefaultAllowedItems = {
     [ '2686'] = "drink", -- thunder ale (listed as 0,0 misc consumable in wow)
+    [ '2725'] = "quest item", -- Green Hills of Stranglethorn - Page 1
+    [ '2728'] = "quest item", -- Green Hills of Stranglethorn - Page 4
+    [ '2730'] = "quest item", -- Green Hills of Stranglethorn - Page 6
+    [ '2732'] = "quest item", -- Green Hills of Stranglethorn - Page 8
+    [ '2734'] = "quest item", -- Green Hills of Stranglethorn - Page 10
+    [ '2735'] = "quest item", -- Green Hills of Stranglethorn - Page 11
+    [ '2738'] = "quest item", -- Green Hills of Stranglethorn - Page 14
+    [ '2740'] = "quest item", -- Green Hills of Stranglethorn - Page 16
+    [ '2742'] = "quest item", -- Green Hills of Stranglethorn - Page 18
+    [ '2744'] = "quest item", -- Green Hills of Stranglethorn - Page 20
+    [ '2745'] = "quest item", -- Green Hills of Stranglethorn - Page 21
+    [ '2748'] = "quest item", -- Green Hills of Stranglethorn - Page 24
+    [ '2749'] = "quest item", -- Green Hills of Stranglethorn - Page 25
+    [ '2750'] = "quest item", -- Green Hills of Stranglethorn - Page 26
+    [ '2751'] = "quest item", -- Green Hills of Stranglethorn - Page 27
+    [ '2755'] = "quest item", -- Green Hills of Stranglethorn - (whole book)
+    [ '2756'] = "quest item", -- Green Hills of Stranglethorn - Chapter I
+    [ '2757'] = "quest item", -- Green Hills of Stranglethorn - Chapter II
+    [ '2758'] = "quest item", -- Green Hills of Stranglethorn - Chapter III
+    [ '2759'] = "quest item", -- Green Hills of Stranglethorn - Chapter IV
     [ '2894'] = "drink", -- rhapsody malt (listed as 0,0 misc consumable in wow)
     [ '2901'] = "used for profession and as a crude weapon", -- mining pick
     [ '3342'] = "looted from a chest", -- captain sander's shirt
     [ '3343'] = "looted from a chest", -- captain sander's booty bag
     [ '3344'] = "looted from a chest", -- captain sander's sash
+    [ '5020'] = "used to open a container", -- kolkar booty key
+    [ '5523'] = "click to open", -- small barnacled clam
+    [ '5524'] = "click to open", -- thick-shelled clam
     [ '5956'] = "used for profession and as a crude weapon", -- blacksmith hammer
     [ '5976'] = "basic item used for guilds", -- guild tabard
     [ '6256'] = "used for profession and as a crude weapon", -- fishing pole
@@ -325,13 +360,28 @@ local gDefaultAllowedItems = {
     [ '6532'] = "used for fishing", -- bright baubles
     [ '6533'] = "used for fishing", -- aquadynamic fish attractor
     [ '7005'] = "used for profession and as a crude weapon", -- skinning knife
+    [ '7973'] = "click to open", -- big-mouth clam
     [ '8067'] = "made via engineering", -- Crafted Light Shot
     [ '8068'] = "made via engineering", -- Crafted Heavy Shot
     [ '8069'] = "made via engineering", -- Crafted Solid Shot
     ['10512'] = "made via engineering", -- Hi-Impact Mithril Slugs
-    ['10513'] = "made via engineering", -- Mithril Gyro-Shot
+    ['11407'] = "misc item", -- Torn Bear Pelt
+    ['15874'] = "click to open", -- soft-shelled clam
     ['15997'] = "made via engineering", -- Thorium Shells
+    ['16645'] = "quest item", -- Shredder Operating Manual - Page 1
+    ['16646'] = "quest item", -- Shredder Operating Manual - Page 2
+    ['16647'] = "quest item", -- Shredder Operating Manual - Page 3
+    ['16648'] = "quest item", -- Shredder Operating Manual - Page 4
+    ['16649'] = "quest item", -- Shredder Operating Manual - Page 5
+    ['16650'] = "quest item", -- Shredder Operating Manual - Page 6
+    ['16651'] = "quest item", -- Shredder Operating Manual - Page 7
+    ['16652'] = "quest item", -- Shredder Operating Manual - Page 8
+    ['16653'] = "quest item", -- Shredder Operating Manual - Page 9
+    ['16654'] = "quest item", -- Shredder Operating Manual - Page 10
+    ['16655'] = "quest item", -- Shredder Operating Manual - Page 11
+    ['16656'] = "quest item", -- Shredder Operating Manual - Page 12
     ['18042'] = "make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
+    ['20393'] = "special event", -- Treat Bag
     ['22250'] = "used for profession", -- Herb Bag
     ['23247'] = "summer fire festival", -- Burning Blossom
     ['23772'] = "made via engineering", -- Fel Iron Shells
@@ -353,27 +403,61 @@ local gDefaultDisallowedItems = {
 }
 
 local gUsableSpellIds = {
-    [CLASS_WARRIOR] = {2457, 6673, 100},
-    [CLASS_PALADIN] = {20154, 21084, 635, 465, 19740, 21082, 498, 639, 853, 1152},
-    [CLASS_HUNTER]  = {1494, 13163, 1130},
-    [CLASS_ROGUE]   = {1784, 921, 5277},
-    [CLASS_PRIEST]  = {585, 2050, 1243, 2052, 17, 586, 139},
-    [CLASS_SHAMAN]  = {403, 331, 8017, 8071, 2484, 332, 324, 8018, 5730},
-    [CLASS_MAGE]    = {168, 133, 1459, 5504, 587, 118},
-    [CLASS_WARLOCK] = {686, 687, 702, 1454, 5782},
-    [CLASS_DRUID]   = {5185, 467, 1126, 774, 8921, 5186},
-}
-
-local gNonUsableSpellIds = {
-    [CLASS_WARRIOR] = {78, 772, 6343, 34428, 1715},
-    [CLASS_PALADIN] = {20271},
-    [CLASS_HUNTER]  = {2973, 1978, 3044, 5116, 14260},
-    [CLASS_ROGUE]   = {1752, 2098, 53, 1776, 1757, 6760},
-    [CLASS_PRIEST]  = {589, 591},
-    [CLASS_SHAMAN]  = {8042, 529},
-    [CLASS_MAGE]    = {116, 2136, 143, 5143},
-    [CLASS_WARLOCK] = {688, 348, 172, 695, 980},
-    [CLASS_DRUID]   = {8921, 5177, 339},
+    [0] = {
+        6603,   -- Attack
+        430,    -- Drink
+        433,    -- Food
+        7744,   -- Will of the Forsaken
+        20549,  -- War Stomp
+        20554,  -- Berzerking
+        20572,  -- Blood Fury
+        20577,  -- Cannibalize
+        20580,  -- Shadowmeld
+        20589,  -- Escape Artist
+        20594,  -- Stoneform
+        20600,  -- Perception
+    },
+    [CLASS_WARRIOR] = {
+        2457,   -- Battle Stance
+        6673,   -- Battle Shout
+    },
+    [CLASS_PALADIN] = {
+        20154,  -- Seal of Righteousness
+        21084,  -- Seal of Righteousness
+        635,    -- Holy Light
+        465,    -- Devotion Aura
+        1875,   -- Devotion Aura
+    },
+    [CLASS_HUNTER]  = {
+        1494,   -- Track Beasts
+    },
+    [CLASS_ROGUE]   = {
+        --nothing!
+    },
+    [CLASS_PRIEST]  = {
+        585,    -- Smite
+        2050,   -- Lesser Heal
+        1243,   -- Power Word: Fortitude
+    },
+    [CLASS_SHAMAN]  = {
+        403,    -- Lightning Bolt
+        331,    -- Healing Wave
+    },
+    [CLASS_MAGE]    = {
+        168,    -- Frost Armor
+        133,    -- Fireball
+        1459,   -- Arcane Intellect
+    },
+    [CLASS_WARLOCK] = {
+        686,    -- Shadow Bolt
+        687,    -- Demon Skin
+        348,    -- Immolate
+    },
+    [CLASS_DRUID]   = {
+        5176,   -- Wrath
+        5185,   -- Healing Touch
+        1126,   -- Mark of the Wild
+    },
 }
 
 local ITEM_DISPOSITION_ALLOWED      =  1    -- /mtn allow, items fished, taken from chests, and self-made
@@ -389,6 +473,18 @@ local ITEM_DISPOSITION_SELF_MADE    = 10    -- items created by the player
 
 local functionQueue = Queue.new()
 
+local function requiredSkillLevel(playerLevel)
+    return playerLevel * 5
+end
+
+local function requiredWeaponLevel(playerLevel)
+    return (playerLevel - 3) * 5
+end
+
+local function playerLevelForSkill(skillLevel)
+    return math.floor(skillLevel / 5)
+end
+
 local function initSavedVarsIfNec(forceAcct, forceChar)
     if forceAcct or AcctSaved == nil then
         AcctSaved = {
@@ -401,17 +497,18 @@ local function initSavedVarsIfNec(forceAcct, forceChar)
         CharSaved = {
             isLucky = true,
             isTrailblazer = false,
+            isPunchy = false,
             dispositions = {}, -- table of item dispositions (key = itemId, value = ITEM_DISPOSITION_xxx)
             madeWeapon = false,
             xpFromLastGain = 0,
-            did = {}, -- 429=taxi, 895=hearth, 609=skills, 779=failed punchy
+            did = {}, -- 501=challenge is over, 429=taxi, 895=hearth, 609=skills, 779=failed punchy
         }
     end
 end
 
-local function printAllowedItem(itemLink, why)
+local function printAllowedItem(itemLink, why, alwaysShowWhy)
     --itemLink = itemLink or 'Unknown item'
-    if AcctSaved.verbose then
+    if AcctSaved.verbose or alwaysShowWhy then
         if why and why ~= '' then
             printGood(itemLink .. " is allowed (" .. why .. ")")
         else
@@ -420,7 +517,7 @@ local function printAllowedItem(itemLink, why)
     end
 end
 
-local function printDisallowedItem(itemLink, why)
+local function printDisallowedItem(itemLink, why, alwaysShowWhy)
     --itemLink = itemLink or 'Unknown item'
     local show = true
     if not AcctSaved.verbose then
@@ -434,7 +531,7 @@ local function printDisallowedItem(itemLink, why)
             end
         end
     end
-    if show then
+    if show or alwaysShowWhy then
         if why and why ~= '' then
             printWarning(itemLink .. " is not allowed (" .. why .. ")")
         else
@@ -517,33 +614,33 @@ local function getUsableSpellNames(class)
     return table.concat(t, ', ')
 end
 
-local function getNonUsableSpellNames(class)
-    local t = {}
-    for _, id in ipairs(gNonUsableSpellIds[class]) do
-        local name = getSpellName(id)
-        if name then t[#t + 1] = name end
-    end
-    return table.concat(t, ', ')
-end
-
 local function printSpellsICanAndCannotUse()
     local level = UnitLevel('player');
     if CharSaved.madeWeapon then
         printGood("You have made your self-crafted weapon, so you can use any spells and abilities.")
     else
         printInfo("You can use " .. getUsableSpellNames(PLAYER_CLASS_ID) .. ".")
-        printInfo("You cannot use " .. getNonUsableSpellNames(PLAYER_CLASS_ID) .. ".")
     end
 end
 
 local function spellIsAllowed(spellId)
-    if CharSaved.madeWeapon then return true end
-    for _, id in ipairs(gNonUsableSpellIds[PLAYER_CLASS_ID]) do
+    -- If weapon is already crafted, then everything is allowed.
+    if CharSaved.madeWeapon then
+        return true
+    end
+    -- Check spells that everyone can use.
+    for _, id in ipairs(gUsableSpellIds[0]) do
         if tostring(spellId) == tostring(id) then
-            return false
+            return true
         end
     end
-    return true
+    -- Check spells that this class can use.
+    for _, id in ipairs(gUsableSpellIds[PLAYER_CLASS_ID]) do
+        if tostring(spellId) == tostring(id) then
+            return true
+        end
+    end
+    return false
 end
 
 --[[
@@ -613,6 +710,33 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
 
 end
 
+local function completedLevel10Requirements()
+
+    local skills = {
+        ['fishing'  ] = true,
+        ['cooking'  ] = true,
+        ['first aid'] = true,
+    }
+
+    local minSkillAt10 = requiredSkillLevel(10)                                 --pdb('  minSkillAt10:', minSkillAt10)
+
+    -- Gather data on the skills we care about.
+    for i = 1, GetNumSkillLines() do
+        local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(i)
+        if not isHeader then
+            local key = skillName:lower()
+            if skills[key] then                                                 --pdb('  key:', key)      --pdb('  skillRank:', skillRank)
+                if skillRank < minSkillAt10 then
+                    return false
+                end
+            end
+        end
+    end
+
+    return true
+
+end
+
 -- Checks skills. Returns 4 arrays of strings: fatals, warnings, reminders, exceptions.
 -- Fatals are messages that the run is invalidated.
 -- Warnings are messages that the run will be invalidated on the next ding.
@@ -622,41 +746,37 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
 
     local fatals, warnings, reminders, notes, exceptions = {}, {}, {}, {}, {}
 
-    -- These are the only skills we care about.
-    local skills = {
-        ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
-        ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
-        ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
-        ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = L['Unarmed'] },
-        ['defense']   = { rank = 0, firstCheckLevel =  4, name = L['Defense'] },
-    }
-
     local playerLevel = UnitLevel('player');
 
-    -- Gather data on the above skills.
+    -- Clear out the skill ranks; we fill them in here.
+    for key, skill in pairs(gSkills) do
+        skill.rank = 0
+    end
+
+    -- Gather data on the skills we care about.
     for i = 1, GetNumSkillLines() do
         local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(i)
         if not isHeader then
             local name = skillName:lower()
-            if skills[name] ~= nil then
-                skills[name].rank = skillRank
+            if gSkills[name] ~= nil then
+                gSkills[name].rank = skillRank
             end
         end
     end
 
-    if CharSaved.isPunchy and skills['unarmed'].rank == 0 then
+    if CharSaved.isPunchy and gSkills['unarmed'].rank == 0 then
 
         exceptions[#exceptions+1] = "Cannot find your unarmed skill - please go into your skill window and expand the \"Weapon Skills\" section"
 
     else
 
         -- Check the skill ranks against the expected rank.
-        for key, skill in pairs(skills) do
+        for key, skill in pairs(gSkills) do
 
             local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
-            local rankRequiredAtFirstCheckLevel = skill.firstCheckLevel * 5
-            local rankRequiredAtThisLevel = playerLevel * 5
-            local rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+            local rankRequiredAtFirstCheckLevel = requiredSkillLevel(skill.firstCheckLevel)
+            local rankRequiredAtThisLevel = requiredSkillLevel(playerLevel)
+            local rankRequiredAtNextLevel = requiredSkillLevel(playerLevel + 1)
 
             if skill.rank == 0 then
 
@@ -675,12 +795,14 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
 
                 -- The player has trained this skill.
 
-                if (key == 'unarmed' or key == 'defense') then
+                if key == 'unarmed' or key == 'defense' then
 
                     if CharSaved.isPunchy then
 
-                        rankRequiredAtThisLevel = playerLevel * 5 - 15
-                        rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+                        --rankRequiredAtThisLevel = playerLevel * 5 - 15
+                        --rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
+                        rankRequiredAtThisLevel = requiredWeaponLevel(playerLevel)
+                        rankRequiredAtNextLevel = requiredWeaponLevel(playerLevel + 1)
 
                         if skill.rank < rankRequiredAtThisLevel then
                             if not CharSaved.did[779] then
@@ -713,8 +835,10 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
                         elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
                             warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you reach level " .. (playerLevel + 1)
                         else
-                            local untilLevel = math.floor(skill.rank / 5)
-                            notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
+                            local untilLevel = playerLevelForSkill(skill.rank)
+                            if untilLevel > playerLevel then
+                                notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
+                            end
                         end
                     end
 
@@ -785,6 +909,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarningsAndNotes)
         end
         printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
         flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+        CharSaved.did[501] = true
         if not gPlayedFailedSound then
             playSound(I_HAVE_FAILED_SOUND)
             gPlayedFailedSound = true
@@ -810,6 +935,7 @@ local function checkSkills(hideMessageIfAllIsWell, hideWarningsAndNotes)
                 CharSaved.did[609] = fatals[1]
                 printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
                 flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                CharSaved.did[501] = true
                 if not gPlayedFailedSound then
                     playSound(I_HAVE_FAILED_SOUND)
                     gPlayedFailedSound = true
@@ -859,7 +985,7 @@ end
 -- Returns true if the item cannot be crafted in this version of WoW, and is therefore allowed to be looted or accepted as a quest reward.
 local function itemIsUncraftable(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     if t.classId == Enum.ItemClass.Weapon then
         if t.subclassId == Enum.ItemWeaponSubclass.Wand
@@ -902,7 +1028,7 @@ end
 
 local function itemRequiresSelfMadeWeapon(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     local classId, subclassId
 
@@ -939,7 +1065,7 @@ end
 
 local function itemIsAQuestItem(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (t.classId == 12)
 
@@ -947,18 +1073,25 @@ end
 
 local function itemIsFoodOrDrink(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
-    --print('itemIsFoodOrDrink', t.link, t.itemId, 'class', t.classId, 'subclass', t.subclassId, '==>', (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5)))
+    local tf = (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5))
+    --print('itemIsFoodOrDrink', t.link, t.itemId, 'class', t.classId, 'subclass', t.subclassId, '==>', tf)
 
-    return (t.classId == 0 and (t.subclassId == 0 or t.subclassId == 5))
+    return tf
 
 end
+
+local gClassSpellReagents = {
+    ['17056']=1,    -- Light Feather
+    ['17057']=1,    -- Shiny Fish Scales
+    ['17058']=1,    -- Fish Oil
+}
 
 -- Returns true if the item can be used for a profession, and is therefore allowed to be purchased, looted, or accepted as a quest reward.
 local function itemIsReagentOrUsableForAProfession(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     if t.isCraftingReagent then
         return true
@@ -973,6 +1106,10 @@ local function itemIsReagentOrUsableForAProfession(t)
         return true
     end
 
+    if gClassSpellReagents[t.itemId] == 1 then
+        return true
+    end
+
     return false
 
 end
@@ -980,7 +1117,7 @@ end
 -- Returns true if the item is a normal bag.
 local function itemIsANormalBag(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (t.classId == Enum.ItemClass.Container and t.subclassId == 0) -- Container subclass of 0 means it's a standard bag.
 
@@ -989,7 +1126,7 @@ end
 -- Returns true if the item is a special container (quiver, ammo pouch, soul shard bag) and is therefore allowed to be accepted as a quest reward.
 local function itemIsASpecialContainer(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (t.classId == Enum.ItemClass.Quiver)
         or (t.classId == Enum.ItemClass.Container and t.subclassId > 0) -- Container subclass of 0 means it's a standard bag. Anything else is special.
@@ -1015,7 +1152,7 @@ local gClassQuestItems = {
 -- Returns true if the item is a reward from a class-specific quest and is therefore allowed to be accepted as a quest reward.
 local function itemIsFromClassQuest(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (gClassQuestItems[t.itemId] == 1)
 
@@ -1024,25 +1161,34 @@ end
 -- Returns true if the item's rarity is beyond green (e.g., blue, purple) and is therefore allowed to be looted.
 local function itemIsRare(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (t.rarity and t.rarity >= Enum.ItemQuality.Rare)
 
 end
 
--- Returns true if the item is some kind of ammunition which lucky mountaineers can buy and hardtacks cannot.
+-- Returns true if the item is some kind of ammunition.
 local function itemIsAmmo(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (t.classId == 6)
+
+end
+
+-- Returns true if the item is some kind of thrown weapon.
+local function itemIsThrown(t)
+
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+
+    return (t.classId == 2 and t.subclassId == 16)
 
 end
 
 -- Returns true if the item's rarity is gray.
 local function itemIsGray(t)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     return (t.rarity and t.rarity == 0)
 
@@ -1142,7 +1288,7 @@ end
 @@          Given the origin of the item, the function can make a decision      @@
 @@          about whether the item is usable.                                   @@
 @@                                                                              @@
-@@  The function returns 3 values:                                              @@
+@@  The function returns 4 values:                                              @@
 @@      Number:                                                                 @@
 @@          0=no, 1=yes, 2=it depends on the context.                           @@
 @@          If exactly one unitId argument is passed, the value is 0 or 1.      @@
@@ -1154,6 +1300,9 @@ end
 @@          with this: Item allowed (...) or Item not allowed (...)             @@
 @@          If no source arguments are passed, the text is longer, providing    @@
 @@          a more complete explanation, as you might find in the document.     @@
+@@      Boolean:                                                                @@
+@@          True if the string above should always be displayed, regardless     @@
+@@          of the verbosity setting. False if normal verbosity applies.        @@
 @@                                                                              @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
@@ -1164,10 +1313,11 @@ local ITEM_SOURCE_REWARDED      = 2
 local ITEM_SOURCE_PURCHASED     = 3
 local ITEM_SOURCE_GAME_OBJECT   = 4
 local ITEM_SOURCE_SELF_MADE     = 5
+local ITEM_SOURCE_CONTAINER     = 6
 
 local function itemStatus(t, source, sourceId, isNewItem)
 
-    -- t is a table with the following fields: name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
+    -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     -- If the item is already on the allowed or disallowed lists, we don't need to use any logic.
     if gDefaultAllowedItems[t.itemId] then
@@ -1177,7 +1327,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
     -- Get the existing disposition for the item, or nil if there is none.
     local dispo = CharSaved.dispositions[t.itemId]
 
-    --print('itemStatus:', t.link, t.itemId, t.rarity, source, sourceId, dispo)
+    --pdb('itemStatus:', t.link, t.itemId, t.rarity, source, sourceId, dispo)
 
     if dispo and not isNewItem then
 
@@ -1226,12 +1376,16 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 1, t.link, "reagents & items usable by a profession are always allowed"
         end
 
-        if itemIsFoodOrDrink(t) or itemIsAmmo(t) then
-            if CharSaved.isLucky then
-                return 2, t.link, "lucky mountaineers can use food, drink, and ammo that is looted, rewarded, or purchased"
-            else
-                return 2, t.link, "hardtack mountaineers can use food, drink, and ammo that is looted, rewarded, but not purchased"
-            end
+        --if itemIsFoodOrDrink(t) or itemIsAmmo(t) or itemIsThrown(t) then
+        --    return 2, t.link, "if from a vendor, mountaineers must sell cooked food to buy food, drink, ammo, or thrown weapons"
+        --end
+
+        if itemIsAmmo(t) or itemIsThrown(t) then
+            return 2, t.link, "ammo and thrown weapons can be looted or accepted as a quest reward, but cannot be purchased"
+        end
+
+        if itemIsFoodOrDrink(t) then
+            return 2, t.link, "drinks are OK, food cannot be bought from a vendor"
         end
 
         if itemIsAQuestItem(t) then
@@ -1284,40 +1438,12 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 0, t.link, "cannot use weapons until crafting one of your own"
         end
 
-        if itemIsReagentOrUsableForAProfession(t) then
-            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
-            CharSaved.dispositions[t.itemId] = nil
-            return 1, t.link, "reagent / profession item"
-        end
+        if source == ITEM_SOURCE_CONTAINER then
 
-        if itemIsFoodOrDrink(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
-            return 1, t.link, "food/drink"
-        end
+            -- This item is looted from a chest or something similar, so we allow it.
+            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
+            return 1, t.link, "via container"
 
-        if itemIsAmmo(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
-            return 1, t.link, "ammo"
-        end
-
-        if itemIsFoodOrDrink(t) and source == ITEM_SOURCE_PURCHASED then
-            if CharSaved.isLucky then
-                return 1, t.link, "food/drink"
-            else
-                return 0, t.link, "hardtack mountaineers cannot purchase food/drink"
-            end
-        end
-
-        if itemIsAmmo(t) and source == ITEM_SOURCE_PURCHASED then
-            if CharSaved.isLucky then
-                return 1, t.link, "ammo"
-            else
-                return 0, t.link, "hardtack mountaineers cannot purchase ammo"
-            end
-        end
-
-        if itemIsAQuestItem(t) then
-            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
-            CharSaved.dispositions[t.itemId] = nil
-            return 1, t.link, "quest item"
         end
 
         if source == ITEM_SOURCE_GAME_OBJECT then
@@ -1328,9 +1454,37 @@ local function itemStatus(t, source, sourceId, isNewItem)
             else
                 -- We don't know 100% for sure, but it's very likely this item is looted from a chest or something similar, so we allow it.
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
-                return 1, t.link, "via container"
+                return 1, t.link, "from container"
             end
 
+        end
+
+        if itemIsReagentOrUsableForAProfession(t) then
+            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+            CharSaved.dispositions[t.itemId] = nil
+            return 1, t.link, "reagent / profession item"
+        end
+
+        if itemIsAmmo(t) or itemIsThrown(t) then
+            if source == ITEM_SOURCE_PURCHASED then
+                return 0, t.link, "ammo and thrown weapons cannot be purchased"
+            else
+                return 1, t.link, "ammo / thrown weapons"
+            end
+        end
+
+        if itemIsFoodOrDrink(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
+            return 1, t.link, "food/drink"
+        end
+
+        if itemIsAmmo(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
+            return 1, t.link, "ammo"
+        end
+
+        if itemIsAQuestItem(t) then
+            -- Don't need to save the item's disposition, since it's intrinsically allowed regardless of how it was received.
+            CharSaved.dispositions[t.itemId] = nil
+            return 1, t.link, "quest item"
         end
 
         if source == ITEM_SOURCE_PURCHASED then
@@ -1340,23 +1494,25 @@ local function itemStatus(t, source, sourceId, isNewItem)
                 return 1, t.link, "trailblazer approved vendor"
             end
 
+            if itemIsFoodOrDrink(t) then
+                return 2, t.link, "drinks can be purchased, food cannot"
+            end
+
+            --if itemIsFoodOrDrink(t) or itemIsAmmo(t) or itemIsThrown(t) then
+            --    return 2, t.link, "you must sell cooked food for that"
+            --end
+
             CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_PURCHASED
             return 0, t.link, "vendor"
 
         end
 
-        if itemIsUncraftable(t) then
-            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-            if source == ITEM_SOURCE_LOOTED then
-                return 1, t.link, "uncraftable looted item"
-            elseif source == ITEM_SOURCE_REWARDED then
-                return 1, t.link, "uncraftable quest reward"
-            else
-                return 0, t.link, "can only use uncraftable items that were looted or quest rewards"
-            end
-        end
-
         if source == ITEM_SOURCE_LOOTED then
+
+            if itemIsUncraftable(t) then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
+                return 1, t.link, "uncraftable looted item", true
+            end
 
             if CharSaved.isLucky then
                 if itemIsANormalBag(t) then
@@ -1390,6 +1546,11 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
         if source == ITEM_SOURCE_REWARDED then
 
+            if itemIsUncraftable(t) then
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
+                return 1, t.link, "uncraftable quest reward", true
+            end
+
             if itemIsASpecialContainer(t) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
                 return 1, t.link, "special container"
@@ -1405,6 +1566,11 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
         end
 
+        if itemIsUncraftable(t) then
+            CharSaved.dispositions[t.itemId] = nil
+            return 0, t.link, "uncraftable items are only allowed if looted or rewarded from a quest"
+        end
+
         CharSaved.dispositions[t.itemId] = nil
         return 0, t.link, "failed all tests"
 
@@ -1414,7 +1580,7 @@ end
 
 local function itemCanBeUsed(itemId, source, sourceId, isNewItem, completionFunc)
 
-    --print('itemCanBeUsed', itemId, source, sourceId, isNewItem, completionFunc)
+    --pdb('itemCanBeUsed', itemId, source, sourceId, isNewItem, completionFunc)
 
     itemId = itemId or ''
     if itemId == '' or itemId == '0' then
@@ -1426,9 +1592,9 @@ local function itemCanBeUsed(itemId, source, sourceId, isNewItem, completionFunc
     end
     itemId = tostring(itemId)
 
-    --if not string.find(itemId, "^%d+$") then
-    --    print("ITEM -> " .. itemId)
-    --end
+    if not string.find(itemId, "^%d+$") then
+        --pdb("ITEM -> " .. itemId)
+    end
 
     initSavedVarsIfNec()
 
@@ -1439,6 +1605,8 @@ local function itemCanBeUsed(itemId, source, sourceId, isNewItem, completionFunc
     local t = {}
     t.itemId = itemId
     t.name, t.link, t.rarity, t.level, t.minLevel, t.type, t.subType, t.stackCount, t.equipLoc, t.texture, t.sellPrice, t.classId, t.subclassId, t.bindType, t.expacId, t.setId, t.isCraftingReagent = GetItemInfo(itemId)
+
+    --pdb('source, link, classId, subclassId:', source, t.link, t.classId, t.subclassId)
 
     -- If we got information for the item, then return the item's status immediately.
     if not completionFunc then
@@ -1463,14 +1631,14 @@ local function itemCanBeUsed(itemId, source, sourceId, isNewItem, completionFunc
 
 end
 
-local function afterItemCanBeUsed(ok, link, why)
-    --print ('afterItemCanBeUsed:', ok, link, why)
+local function afterItemCanBeUsed(ok, link, why, alwaysShowWhy)
+    --pdb('afterItemCanBeUsed:', ok, link, why)
     if ok == 0 then
         if not link then link = "That item" end
-        printDisallowedItem(link, why)
+        printDisallowedItem(link, why, alwaysShowWhy)
     elseif ok == 1 then
         if not link then link = "That item" end
-        printAllowedItem(link, why)
+        printAllowedItem(link, why, alwaysShowWhy)
     else
         if link then
             printInfo(link .. ": " .. why)
@@ -1478,6 +1646,7 @@ local function afterItemCanBeUsed(ok, link, why)
             printWarning("Unable to look up item - please try again")
         end
     end
+    --pdb(' ')
 end
 
 --[[
@@ -1545,7 +1714,7 @@ local function inventoryWarnings()
         if itemId then
             -- If there's an item in the slot, check it.
             local status, link, why = itemCanBeUsed(itemId)
-            --print(status, link, why)
+            --pdb("status, link, why:", status, link, why)
 
             if not CharSaved.madeWeapon and slot == SLOT_OFF_HAND then
                 status = 0
@@ -1555,7 +1724,7 @@ local function inventoryWarnings()
                 why = "cannot equip the ranged slot until crafting your own weapon"
             end
 
-            --print("slot", slot, ":", itemId, status, link, why)
+            --pdb("slot", slot, ":", itemId, status, link, why)
             if status == 0 then
                 if why then
                     why = '(' .. why .. ')'
@@ -1595,32 +1764,33 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     local p1, p2, p3, p4, cmd, arg1, match
     local override = true
     local playerLevel = UnitLevel('player');
+    local xp = UnitXP('player')
 
     str = str:lower()
 
-    p1, p2 = str:find("^lucky$")
-    if p1 then
+    p1, p2 = str:find("^lucky *(%a*)$")
+    p3, p4 = str:find("^sudo lucky$")
+    if p1 or p3 then
         if CharSaved.isLucky then
             printGood(whatAmI())
         else
-            if playerLevel > 1 then
-                printWarning("Sorry, you cannot change mountaineer mode after level 1")
-                return
-            end
             CharSaved.isLucky = true
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You can use any looted items."))
+            if playerLevel == 1 and xp == 0 then
+                printWarning("You must have at least 1 XP before your choice will be saved for your next session")
+            end
             checkInventory()
         end
         return
     end
 
     p1, p2 = str:find("^hardtack$")
-    p3, p4 = str:find("^ht$")
+    p3, p4 = str:find("^sudo hardtack$")
     if p1 or p3 then
         if not CharSaved.isLucky then
             printGood(whatAmI())
         else
-            if playerLevel > 1 then
+            if playerLevel > 1 and p3 == nil then
                 printWarning("Sorry, you cannot change mountaineer mode after level 1")
                 return
             end
@@ -1630,25 +1800,33 @@ SlashCmdList["MOUNTAINEER"] = function(str)
                 CharSaved.isLazyBastard = false
                 printWarning("Your lazy bastard challenge has been turned off")
             end
+            if playerLevel == 1 and xp == 0 then
+                printWarning("You must have at least 1 XP before your choice will be saved for your next session")
+            end
             checkInventory()
         end
         return
     end
 
     p1, p2 = str:find("^trailblazer$")
-    p3, p4 = str:find("^tb$")
+    p3, p4 = str:find("^sudo trailblazer$")
     if p1 or p3 then
-        if playerLevel > 1 then
+        if playerLevel > 1 and p3 == nil then
             printWarning("Sorry, you cannot change mountaineer achievements after level 1")
             return
         end
-        if CharSaved.did[429] then
-            printWarning("You have flown on a taxi, so you cannot be a trailblazer")
-            return
-        end
-        if CharSaved.did[895] then
-            printWarning("You have hearthed/teleported, so you cannot be a trailblazer")
-            return
+        if p3 == nil then
+            if CharSaved.did[429] then
+                printWarning("You have flown on a taxi, so you cannot be a trailblazer")
+                return
+            end
+            if CharSaved.did[895] then
+                printWarning("You have hearthed/teleported, so you cannot be a trailblazer")
+                return
+            end
+        else
+            CharSaved.did[429] = nil
+            CharSaved.did[895] = nil
         end
         CharSaved.isTrailblazer = not CharSaved.isTrailblazer
         if CharSaved.isTrailblazer then
@@ -1656,13 +1834,16 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         else
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Trailblazer mode off. You can use a hearthstone and flight paths, but you can no longer buy from open world vendors."))
         end
+        if playerLevel == 1 and xp == 0 then
+            printWarning("You must have at least 1 XP before your choice will be saved for your next session")
+        end
         return
     end
 
     p1, p2 = str:find("^lazy$")
-    p3, p4 = str:find("^lb$")
+    p3, p4 = str:find("^sudo lazy$")
     if p1 or p3 then
-        if playerLevel > 1 then
+        if playerLevel > 1 and p3 == nil then
             printWarning("Sorry, you cannot change mountaineer achievements after level 1")
             return
         end
@@ -1676,25 +1857,33 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         else
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Lazy bastard mode off."))
         end
+        if playerLevel == 1 and xp == 0 then
+            printWarning("You must have at least 1 XP before your choice will be saved for your next session")
+        end
         return
     end
 
     p1, p2 = str:find("^punchy$")
-    p3, p4 = str:find("^punch$")
+    p3, p4 = str:find("^sudo punchy$")
     if p1 or p3 then
-        if playerLevel > 1 then
-            printWarning("Sorry, you cannot change mountaineer achievements after level 1")
-            return
-        end
-        if not CharSaved.isPunchy and CharSaved.did[779] then
-            printWarning("You cannot do the punchy achievement on this character since you have already failed it")
-            return
+        if not CharSaved.isPunchy then
+            if p3 == nil then
+                if CharSaved.did[779] then
+                    printWarning("You cannot do the punchy achievement on this character since you have already failed it")
+                    return
+                end
+            else
+                CharSaved.did[779] = nil
+            end
         end
         CharSaved.isPunchy = not CharSaved.isPunchy
         if CharSaved.isPunchy then
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You must maintain your unarmed and defense skills within 15 points of maximum at all times."))
         else
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Punchy mode off."))
+        end
+        if playerLevel == 1 and xp == 0 then
+            printWarning("You must have at least 1 XP before your choice will be saved for your next session")
         end
         checkSkills(true)
         return
@@ -1736,6 +1925,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         checkInventory()
         local warningCount = checkSkills()
         gSkillsAreUpToDate = (warningCount == 0)
+        gSkillsAreReadyForLevel10 = completedLevel10Requirements()
         return
     end
 
@@ -1802,12 +1992,6 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
-    p1, p2 = str:find("^version$")
-    if p1 then
-        printGood(ADDON_VERSION)
-        return
-    end
-
 --[[
 =DUMP=
 ]]
@@ -1833,9 +2017,6 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         print(colorText('ffff00', "/mtn spells"))
         print("   Lists the abilities you may use before making your self-crafted weapon.")
     end
-
-    print(colorText('ffff00', "/mtn version"))
-    print("   Shows the current version of the addon.")
 
     print(colorText('ffff00', "/mtn verbose [on/off]"))
     print("   Turns verbose mode on or off. When on, you will see all evaluation messages when receiving items. When off, all \"item is allowed\" messages will be suppressed, as well as \"item is disallowed\" for gray items.")
@@ -1901,149 +2082,253 @@ EventFrame:RegisterEvent('QUEST_PROGRESS')
 EventFrame:RegisterEvent('UNIT_SPELLCAST_SENT')
 EventFrame:RegisterEvent('UNIT_SPELLCAST_SUCCEEDED')
 
+function onPlayerEnteringWorld()
+
+    initSavedVarsIfNec()
+
+    local level = UnitLevel('player')
+    local xp = UnitXP('player')
+
+    gPlayerGUID = UnitGUID('player')
+
+    printInfo("Loaded - type /mtn to access options and features")
+    printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
+
+    if CharSaved.did[501] then
+        -- Do the following after a delay of a few seconds.
+        C_Timer.After(6, function()
+            playSound(I_HAVE_FAILED_SOUND)
+            printWarning("Sorry, you have failed a previous requirement")
+            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+        end)
+        return
+    end
+
+    -- If this is the first login for this character, clear all CharSaved
+    -- values in case the player rolled a previous toon with the same name.
+    if level == 1 and xp == 0 then
+        initSavedVarsIfNec(false, true)
+    end
+
+    -- Prime the pump for getting spell subtext if needed somewhere later on.
+    -- It looks like each spell has its own cache for subtext (spell ranks).
+    for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
+        getUsableSpellNames(classId)
+    end
+
+    -- Get basic player information.
+
+    PLAYER_LOC = PlayerLocation:CreateFromUnit("player")
+    PLAYER_CLASS_NAME, _, PLAYER_CLASS_ID = C_PlayerInfo.GetClass(PLAYER_LOC)
+
+    -- In case the player is using old CharSaved data, set some appropriate defaults.
+
+    if CharSaved.isLucky        == nil then CharSaved.isLucky       = true          end
+    if CharSaved.isTrailblazer  == nil then CharSaved.isTrailblazer = false         end
+    if CharSaved.madeWeapon     == nil then CharSaved.madeWeapon    = (level >= 10) end
+    if CharSaved.dispositions   == nil then CharSaved.dispositions  = {}            end
+    if CharSaved.did            == nil then CharSaved.did           = {}            end
+    if AcctSaved.verbose        == nil then AcctSaved.verbose       = true          end
+
+    -- MSL 2022-08-07
+    -- I've expanded Mountaineer to include all classes except DKs.
+    -- Previously we only allowed warriors, rogues, and hunters.
+
+    if PLAYER_CLASS_ID == CLASS_DEATHKNIGHT then
+        PlaySoundFile(ERROR_SOUND_FILE)
+        printWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
+        flashWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
+        return
+    end
+
+    -- Let the user know what mode they're playing in.
+
+    printGood(whatAmI())
+
+    if level == 1 and xp < 200 then
+        if CharSaved.isLucky then
+            printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack") .. " before reaching level 2")
+        end
+        if not CharSaved.isTrailblazer then
+            printInfo("If you want to do the trailblazer achievement, type " .. colorText('ffff00', "/mtn trailblazer") .. " before reaching level 2")
+        end
+        if not CharSaved.isPunchy then
+            printInfo("If you want to do the punchy achievement, type " .. colorText('ffff00', "/mtn punchy") .. " before reaching level 2")
+        end
+    end
+
+    if level >= 6 and not CharSaved.madeWeapon then
+        printWarning("You have not yet made your self-crafted weapon. You need to do that before reaching level 10.")
+        printSpellsICanAndCannotUse()
+    end
+
+    -- Check the WoW version and set constants accordingly.
+
+    if gameVersion() == 0 then
+        local version, build, date, tocversion = GetBuildInfo()
+        printWarning("This addon only designed for WoW versions 1 through 3 -- version " .. version .. " is not supported")
+    end
+
+    -- Show or hide the minimap based on preferences.
+    -- (Mountaineer 2.0 rules do not allow maps, but we offer flexibility because of the addons buttons around the minimap.)
+
+    if AcctSaved.showMiniMap then
+        MinimapCluster:Show()
+    else
+        MinimapCluster:Hide()
+    end
+
+    -- Hide the left & right gryphons next to the main toolbar.
+
+    --MainMenuBarLeftEndCap:Hide()
+    --MainMenuBarRightEndCap:Hide()
+
+
+--local SLOT_AMMO = 0
+--local SLOT_HEAD = 1
+--local SLOT_NECK = 2
+--local SLOT_SHOULDER = 3
+--local SLOT_SHIRT = 4
+--local SLOT_CHEST = 5
+--local SLOT_WAIST = 6
+--local SLOT_LEGS = 7
+--local SLOT_FEET = 8
+--local SLOT_WRIST = 9
+--local SLOT_HANDS = 10
+--local SLOT_FINGER_1 = 11
+--local SLOT_FINGER_2 = 12
+--local SLOT_TRINKET_1 = 13
+--local SLOT_TRINKET_2 = 14
+--local SLOT_BACK = 15
+--local SLOT_MAIN_HAND = 16
+--local SLOT_OFF_HAND = 17
+--local SLOT_RANGED = 18
+
+
+    -- If the character is just starting out
+    if level == 1 and xp < 200 then
+
+        -- If no XP, give it a little time for the user to get rid of the intro dialog.
+        local seconds = (xp == 0) and 5 or 1
+
+        -- Do the following after a delay of a few seconds.
+        C_Timer.After(seconds, function()
+
+            local nUnequipped = 0;
+
+            for slot = 0, 18 do
+                local itemId = getInventoryItemID("player", slot)
+                if itemId then
+                    local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
+                    --print(" slot=", slot, " itemId=", itemId, " name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice)
+                    --if slot == SLOT_MAIN_HAND or slot == SLOT_OFF_HAND or slot == SLOT_RANGED or slot == SLOT_AMMO then
+                    if true then
+                        PickupInventoryItem(slot)
+                        PutItemInBackpack()
+                        printInfo("Unequipped " .. link .. " (" .. itemId .. ")")
+                        nUnequipped = nUnequipped + 1
+                        allowOrDisallowItem(itemId, false)
+                    end
+                end
+            end
+
+            if nUnequipped > 0 then
+                playSound(PUNCH_SOUND_FILE)
+                printInfo("Time to do some punching!  :)")
+            end
+
+        end)
+
+    else
+
+        -- Do the following after a short delay.
+        C_Timer.After(1, function()
+
+            local warningCount = checkSkills()
+            gSkillsAreUpToDate = (warningCount == 0)
+            gSkillsAreReadyForLevel10 = completedLevel10Requirements()
+            checkInventory()
+
+        end)
+
+    end
+
+end
+
+local function onPlayerSkillUp(text)
+
+    local playerLevel = UnitLevel('player')
+    local _, _, skillName, skillLevel = text:find("Your skill in (.*) has increased to (.*)")
+
+    if skillName ~= nil and skillLevel ~= nil then
+
+        local key = skillName:lower()                                           --pdb('key:', key)
+        skillLevel = tonumber(skillLevel)                                       --pdb('skillLevel:', skillLevel)
+
+        if (key == 'first aid' or key == 'fishing' or key == 'cooking') or (CharSaved.isPunchy and (key == 'unarmed' or key == 'defense')) then
+
+            local workComplete = false
+
+                                                                                --pdb('gSkillsAreUpToDate:', gSkillsAreUpToDate)
+                                                                                --pdb('gSkillsAreReadyForLevel10:', gSkillsAreReadyForLevel10)
+            local readyForLevel10 = completedLevel10Requirements()              --pdb('readyForLevel10:', readyForLevel10)
+
+            if not gSkillsAreUpToDate then
+                local warningCount = checkSkills(true, true)                    --pdb('warningCount:', warningCount)
+                if warningCount == 0 then
+                    workComplete = true
+                end
+            elseif not gSkillsAreReadyForLevel10 and readyForLevel10 then
+                printGood("Congratulations! You've completed all the Mountaineer requirements for level 10")
+                workComplete = true
+            end
+                                                                                --pdb('workComplete:', workComplete)
+            if workComplete then
+
+                gSkillsAreUpToDate = true
+                gSkillsAreReadyForLevel10 = true
+
+                -- Repeat the check so the all-is-well message is displayed.
+                checkSkills()
+
+                -- Congratulate them with the "WORK COMPLETE" sound.
+                PlaySoundFile(WORK_COMPLETE_SOUND)
+
+            elseif skillLevel%5 == 0 then
+
+                if key == 'unarmed' or key == 'defense' then
+
+                    -- Don't bother showing "you won't have to improve" message.
+
+                else
+
+                    local goodUntilLevel = playerLevelForSkill(skillLevel)      --pdb('goodUntilLevel:', goodUntilLevel)
+
+                    local minPlayerLevel = 0
+                    if gSkills[key] and gSkills[key].firstCheckLevel then
+                        minPlayerLevel = gSkills[key].firstCheckLevel
+                    end
+                                                                                --pdb('minPlayerLevel:', minPlayerLevel)
+                    if goodUntilLevel >= minPlayerLevel then
+                        printGood("You won't have to improve " .. skillName .. " until level " .. goodUntilLevel)
+                    end
+
+                end
+
+            end
+
+        end
+
+    end
+
+end
+
 EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     if event == 'PLAYER_ENTERING_WORLD' then
 
-        initSavedVarsIfNec()
-
-        local level = UnitLevel('player')
-        local xp = UnitXP('player')
-
-        gPlayerGUID = UnitGUID('player')
-
-        printInfo("Loaded - type /mtn to access options and features")
-        printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
-
-        -- If this is the first login for this character, clear all CharSaved
-        -- values in case the player rolled a previous toon with the same name.
-        if level == 1 and xp == 0 then
-            initSavedVarsIfNec(false, true)
-        end
-
-        -- Prime the pump for getting spell subtext if needed somewhere later on.
-        -- It looks like each spell has its own cache for subtext (spell ranks).
-        for _, classId in ipairs(CLASS_IDS_ALPHABETICAL) do
-            getUsableSpellNames(classId)
-            getNonUsableSpellNames(classId)
-        end
-
-        -- Get basic player information.
-
-        PLAYER_LOC = PlayerLocation:CreateFromUnit("player")
-        PLAYER_CLASS_NAME, _, PLAYER_CLASS_ID = C_PlayerInfo.GetClass(PLAYER_LOC)
-
-        -- In case the player is using old CharSaved data, set some appropriate defaults.
-
-        if CharSaved.isLucky        == nil then CharSaved.isLucky       = true          end
-        if CharSaved.isTrailblazer  == nil then CharSaved.isTrailblazer = false         end
-        if CharSaved.madeWeapon     == nil then CharSaved.madeWeapon    = (level >= 10) end
-        if CharSaved.dispositions   == nil then CharSaved.dispositions  = {}            end
-        if CharSaved.did            == nil then CharSaved.did           = {}            end
-        if AcctSaved.verbose        == nil then AcctSaved.verbose       = true          end
-
-        -- MSL 2022-08-07
-        -- I've expanded Mountaineer to include all classes except DKs.
-        -- Previously we only allowed warriors, rogues, and hunters.
-
-        if PLAYER_CLASS_ID == CLASS_DEATHKNIGHT then
-            PlaySoundFile(ERROR_SOUND_FILE)
-            printWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
-            flashWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
-            return
-        end
-
-        -- Let the user know what mode they're playing in.
-
-        printGood(whatAmI())
-
-        if level == 1 and xp < 200 then
-            if CharSaved.isLucky then
-                printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack") .. " before reaching level 2")
-            end
-            if not CharSaved.isTrailblazer then
-                printInfo("If you want to do the trailblazer achievement, type " .. colorText('ffff00', "/mtn trailblazer") .. " before reaching level 2")
-            end
-            if not CharSaved.isPunchy then
-                printInfo("If you want to do the punchy achievement, type " .. colorText('ffff00', "/mtn punchy") .. " before reaching level 2")
-            end
-        end
-
-        if level >= 6 and not CharSaved.madeWeapon then
-            printWarning("You have not yet made your self-crafted weapon. You need to do that before reaching level 10.")
-            printSpellsICanAndCannotUse()
-        end
-
-        -- Check the WoW version and set constants accordingly.
-
-        if gameVersion() == 0 then
-            local version, build, date, tocversion = GetBuildInfo()
-            printWarning("This addon only designed for WoW versions 1 through 3 -- version " .. version .. " is not supported")
-        end
-
-        -- Show or hide the minimap based on preferences.
-        -- (Mountaineer 2.0 rules do not allow maps, but we offer flexibility because of the addons buttons around the minimap.)
-
-        if AcctSaved.showMiniMap then
-            MinimapCluster:Show()
-        else
-            MinimapCluster:Hide()
-        end
-
-        -- Hide the left & right gryphons next to the main toolbar.
-
-        --MainMenuBarLeftEndCap:Hide()
-        --MainMenuBarRightEndCap:Hide()
-
-        -- If the character is just starting out
-        if level == 1 and xp < 200 then
-
-            -- If no XP, give it a little time for the user to get rid of the intro dialog.
-            local seconds = (xp == 0) and 5 or 1
-
-            -- Do the following after a delay of a few seconds.
-            C_Timer.After(seconds, function()
-
-                local nUnequipped = 0;
-
-                for slot = 0, 18 do
-                    local itemId = getInventoryItemID("player", slot)
-                    if itemId then
-                        local name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice = GetItemInfo(itemId)
-                        --print(" slot=", slot, " itemId=", itemId, " name=", name, " link=", link, " rarity=", rarity, " level=", level, " minLevel=", minLevel, " type=", type, " subType=", subType, " stackCount=", stackCount, " equipLoc=", equipLoc, " texture=", texture, " sellPrice=", sellPrice)
-                        if slot == SLOT_MAIN_HAND or slot == SLOT_OFF_HAND or slot == SLOT_RANGED or slot == SLOT_AMMO then
-                            -- The player must remove any items in the lower slots.
-                            PickupInventoryItem(slot)
-                            PutItemInBackpack()
-                            printInfo("Unequipped " .. link .. " (" .. itemId .. ")")
-                            nUnequipped = nUnequipped + 1
-                        else
-                            -- The player can keep anything in the upper slots.
-                            -- We mark them as allowed to override older versions of the addon that blacklisted them across all characters in the account.
-                            allowOrDisallowItem(itemId, true)
-                        end
-                    end
-                end
-
-                if nUnequipped > 0 then
-                    playSound(PUNCH_SOUND_FILE)
-                    printInfo("Time to do some punching!  :)")
-                end
-
-            end)
-
-        else
-
-            -- Do the following after a short delay.
-            C_Timer.After(1, function()
-
-                local warningCount = checkSkills()
-                gSkillsAreUpToDate = (warningCount == 0)
-                checkInventory()
-
-            end)
-
-        end
+        onPlayerEnteringWorld()
 
     elseif event == 'QUEST_DETAIL' or event == 'QUEST_PROGRESS' or event == 'QUEST_COMPLETE' then
 
@@ -2068,7 +2353,6 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'LOOT_READY' then
 
         local lootTable = GetLootInfo()
-        local skipLoot = false
 
         for i = 1, #lootTable do
 
@@ -2086,19 +2370,13 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local sourceInfo = {GetLootSourceInfo(i)}
             if sourceInfo and #sourceInfo > 0 then
                 local guid = sourceInfo[1]
-                if guid == gLastLootSourceGUID then
-                    skipLoot = true
-                else
+                if guid ~= gLastLootSourceGUID then
                     gLastLootSourceGUID = guid
+                    --pdb('[', i, ']', 'gLastLootSourceGUID:', gLastLootSourceGUID)
                 end
             end
 
         end
-
-        --if not skipLoot then
-        --    printInfo("Loot table (" .. gLastLootSourceGUID .. ")")
-        --    print(ut.tfmt(lootTable))
-        --end
 
         --=--for i = 1, #lootTable do
         --=--    print(ut.tfmt(lootTable[i]))
@@ -2164,6 +2442,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             --print(" level=", level, " hp=", hp, " mana=", mana, " tp=", tp, " str=", str, " agi=", agi, " sta=", sta, " int=", int, " spi=", spi)
             local warningCount = checkSkills()
             gSkillsAreUpToDate = (warningCount == 0)
+            gSkillsAreReadyForLevel10 = completedLevel10Requirements()
 
         end)
 
@@ -2271,7 +2550,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
     elseif event == 'CHAT_MSG_LOOT' then
 
         local text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons = ...
-        --print("CHAT_MSG_LOOT", text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
+        --pdb("CHAT_MSG_LOOT", text, playerName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, unused, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
 
         -- Do the following after a short delay.
         C_Timer.After(.3, function()
@@ -2282,11 +2561,14 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local _, _, itemLink = text:find(L['You receive loot'] .. ": (.*)%.")
             if not matched and itemLink ~= nil then
                 matched = true
-                --print('match you receive loot')
+                --pdb('match you receive loot')
                 -- The LOOT_READY event has already fired and set gLastLootSourceGUID.
                 local unitType, _, serverId, instanceId, zoneUID, unitId, spawnUID = strsplit("-", gLastLootSourceGUID)
+                --pdb('unitType:', unitType)
                 if unitType == 'GameObject' then
                     itemCanBeUsed(itemId, ITEM_SOURCE_GAME_OBJECT, unitId, true, afterItemCanBeUsed)
+                elseif unitType == 'Item' then
+                    itemCanBeUsed(itemId, ITEM_SOURCE_CONTAINER, unitId, true, afterItemCanBeUsed)
                 else
                     itemCanBeUsed(itemId, ITEM_SOURCE_LOOTED, gLastUnitTargeted, true, afterItemCanBeUsed)
                 end
@@ -2295,7 +2577,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local _, _, itemLink = text:find(L['You receive item'] .. ": (.*)%.")
             if not matched and itemLink ~= nil then
                 matched = true
-                --print('match you receive item')
+                --pdb('match you receive item')
                 if gLastQuestUnitTargeted then
                     itemCanBeUsed(itemId, ITEM_SOURCE_REWARDED, gLastQuestUnitTargeted, true, afterItemCanBeUsed)
                 elseif gLastMerchantUnitTargeted then
@@ -2308,51 +2590,31 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local _, _, itemLink = text:find(L['You create'] .. ": (.*)%.")
             if not matched and itemLink ~= nil then
                 matched = true
-                --print('match you create')
+                --pdb('match you create')
                 itemCanBeUsed(itemId, ITEM_SOURCE_SELF_MADE, nil, true, afterItemCanBeUsed)
             end
 
             if not matched then
-                printWarning("Unable to determine whether or not you can use " .. itemLink .. " - check the localization strings in Mountaineer.lua")
+                local name = itemLink or 'item'
+                printWarning("Unable to determine whether or not you can use " .. name .. " - check the localization strings in Mountaineer.lua")
             end
 
         end)
 
     elseif event == 'CHAT_MSG_SKILL' then
 
-        local text = ...
-        local level = UnitLevel('player')
+        --pdb('CHAT_MSG_SKILL')
 
-        if level >= 3 then
+        local text = ...
+        local playerLevel = UnitLevel('player')
+
+        if playerLevel >= 3 then
+
             -- Do the following after a short delay.
             C_Timer.After(.3, function()
-                local _, _, skillName, skillLevel = text:find("Your skill in (.*) has increased to (.*)")
-                if skillName ~= nil then
-                    local skillNameOrig = skillName
-                    skillName = skillName:lower()
-                    if skillName == 'first aid' or skillName == 'fishing' or skillName == 'cooking' then
-                        local workComplete = false
-                        if not gSkillsAreUpToDate then
-                            local warningCount = checkSkills(true, true)
-                            if warningCount == 0 then
-                                -- If we're here, the player just transitioned to all skills being up to date.
-                                gSkillsAreUpToDate = true
-                                -- Repeat the check so the all-is-well message is displayed.
-                                checkSkills()
-                                -- Congratulate them with the "WORK COMPLETE" sound.
-                                PlaySoundFile(WORK_COMPLETE_SOUND)
-                                workComplete = true
-                            end
-                        end
-                        if not workComplete then
-                            local untilLevel = skillLevel/5
-                            if skillLevel%5 == 0 and untilLevel > level then
-                                printGood("You won't have to improve " .. skillNameOrig .. " until level " .. untilLevel)
-                            end
-                        end
-                    end
-                end
+                onPlayerSkillUp(text)
             end)
+
         end
 
     elseif event == 'UNIT_SPELLCAST_SENT' then
@@ -2368,7 +2630,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
             if PLAYER_CLASS_ID == CLASS_HUNTER and spellId == 982 then -- Revive Pet
 
-                local msg = "Pets are mortal, you must abandon after reviving"
+                local msg = "Pets are mortal, you must abandon your pet"
                 printWarning(msg)
                 flashWarning(msg)
                 playSound(ERROR_SOUND_FILE)
@@ -2383,7 +2645,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
             elseif not spellIsAllowed(spellId) then
 
-                printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon")
+                printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon (" .. spellId .. ")")
                 flashWarning("You cannot use " .. name)
                 playSound(ERROR_SOUND_FILE)
 
@@ -2393,24 +2655,24 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
     elseif event == 'UNIT_SPELLCAST_SUCCEEDED' then
 
-        local name = getSpellName(gSpellIdBeingCast)
-        --print('UNIT_SPELLCAST_SUCCEEDED', gSpellIdBeingCast, name)
+        local name = getSpellName(gSpellIdBeingCast)                            --pdb('UNIT_SPELLCAST_SUCCEEDED', gSpellIdBeingCast, name)
 
         -- Do the following after a short delay.
         C_Timer.After(.1, function()
 
             if gSpellsDisallowedForTrailblazer[spellId] then
 
-                CharSaved.did[895] = true
+                CharSaved.did[895] = true                                       --pdb("895: hearth, Astral Recall, teleport, or portal")
 
                 if CharSaved.isTrailblazer then
                     printWarning("Trailblazer mountaineers cannot hearth, Astral Recall, teleport, or portal")
-                    flashWarning("YOU ARE NO LONGER A TRAILBLAZER")
+                    printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                    flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+                    CharSaved.did[501] = true
                     if not gPlayedFailedSound then
                         playSound(I_HAVE_FAILED_SOUND)
                         gPlayedFailedSound = true
                     end
-                    printWarning("You are no longer a trailblazer - you can now hearth and use flight paths, but you cannot buy from open world vendors anymore")
                     CharSaved.isTrailblazer = false
                     printInfo(whatAmI())
                 end
@@ -2436,7 +2698,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
         if not CharSaved.madeWeapon then
             if not spellIsAllowed(spellId) then
-                printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon")
+                printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon (" .. spellId .. ")")
                 flashWarning("You cannot use " .. name)
                 playSound(ERROR_SOUND_FILE)
             end
@@ -2451,7 +2713,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             if actionType == 'spell' then
                 local name = getSpellName(id)
                 if not spellIsAllowed(id) then
-                    printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon")
+                    printWarning("You cannot use " .. name .. " until you create and equip a self-crafted weapon (" .. id .. ")")
                     flashWarning("You cannot use " .. name)
                     playSound(ERROR_SOUND_FILE)
                 end
