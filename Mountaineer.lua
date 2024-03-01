@@ -403,20 +403,6 @@ local gDefaultDisallowedItems = {
 }
 
 local gUsableSpellIds = {
-    [0] = {
-        6603,   -- Attack
-        430,    -- Drink
-        433,    -- Food
-        7744,   -- Will of the Forsaken
-        20549,  -- War Stomp
-        20554,  -- Berzerking
-        20572,  -- Blood Fury
-        20577,  -- Cannibalize
-        20580,  -- Shadowmeld
-        20589,  -- Escape Artist
-        20594,  -- Stoneform
-        20600,  -- Perception
-    },
     [CLASS_WARRIOR] = {
         2457,   -- Battle Stance
         6673,   -- Battle Shout
@@ -458,6 +444,18 @@ local gUsableSpellIds = {
         5185,   -- Healing Touch
         1126,   -- Mark of the Wild
     },
+}
+
+local gNonUsableSpellIds = {
+    [CLASS_WARRIOR] = {100, 78, 772, 6343, 34428, 1715},
+    [CLASS_PALADIN] = {20271, 19740, 21082, 498, 639, 853, 1152},
+    [CLASS_HUNTER]  = {13163, 1130, 2973, 1978, 3044, 5116, 14260},
+    [CLASS_ROGUE]   = {1784, 921, 5277, 1752, 2098, 53, 1776, 1757, 6760},
+    [CLASS_PRIEST]  = {2052, 17, 586, 139, 589, 591},
+    [CLASS_SHAMAN]  = {8017, 8071, 2484, 332, 324, 8018, 5730, 8042, 529},
+    [CLASS_MAGE]    = {5504, 587, 118, 116, 2136, 143, 5143},
+    [CLASS_WARLOCK] = {702, 1454, 5782, 688, 172, 695, 980},
+    [CLASS_DRUID]   = {467, 774, 8921, 5186, 8921, 5177, 339},
 }
 
 local ITEM_DISPOSITION_ALLOWED      =  1    -- /mtn allow, items fished, taken from chests, and self-made
@@ -628,19 +626,13 @@ local function spellIsAllowed(spellId)
     if CharSaved.madeWeapon then
         return true
     end
-    -- Check spells that everyone can use.
-    for _, id in ipairs(gUsableSpellIds[0]) do
+    -- Check spells that this class cannot use.
+    for _, id in ipairs(gNonUsableSpellIds[PLAYER_CLASS_ID]) do
         if tostring(spellId) == tostring(id) then
-            return true
+            return false
         end
     end
-    -- Check spells that this class can use.
-    for _, id in ipairs(gUsableSpellIds[PLAYER_CLASS_ID]) do
-        if tostring(spellId) == tostring(id) then
-            return true
-        end
-    end
-    return false
+    return true
 end
 
 --[[
