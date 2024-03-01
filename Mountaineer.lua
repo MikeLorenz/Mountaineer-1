@@ -11,8 +11,8 @@
 ]]
 
 local ADDON_VERSION = '2.2.1' -- This should be the same as in the .toc file.
-local function printpdb() end
-local pdb = printpdb
+local function printnothing() end
+local pdb = printnothing
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -138,6 +138,8 @@ end
 
 local PRINT_PREFIX = "MOUNTAINEER: "
 local GAME_VERSION = nil -- 1 = Classic Era or SoM, 2 = TBC, 3 = WotLK
+
+local MAX_LEVEL_TO_CHANGE_PLAY_MODE = 4
 
 local CLASS_WARRIOR = 1
 local CLASS_PALADIN = 2
@@ -1782,12 +1784,12 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         if not CharSaved.isLucky then
             printGood(whatAmI())
         else
-            if playerLevel > 1 and p3 == nil then
-                printWarning("Sorry, you cannot change mountaineer mode after level 1")
+            if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
+                printWarning("Sorry, you cannot change mountaineer mode after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
                 return
             end
             CharSaved.isLucky = false
-            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You CANNOT use looted items (with some exceptions, of course)."))
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You cannot use looted items (with some exceptions, of course)."))
             if CharSaved.isLazyBastard then
                 CharSaved.isLazyBastard = false
                 printWarning("Your lazy bastard challenge has been turned off")
@@ -1803,18 +1805,20 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^trailblazer$")
     p3, p4 = str:find("^sudo trailblazer$")
     if p1 or p3 then
-        if playerLevel > 1 and p3 == nil then
-            printWarning("Sorry, you cannot change mountaineer achievements after level 1")
-            return
-        end
+        --if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
+        --    printWarning("Sorry, you cannot change mountaineer achievements after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
+        --    return
+        --end
         if p3 == nil then
-            if CharSaved.did[429] then
-                printWarning("You have flown on a taxi, so you cannot be a trailblazer")
-                return
-            end
-            if CharSaved.did[895] then
-                printWarning("You have hearthed/teleported, so you cannot be a trailblazer")
-                return
+            if not CharSaved.isTrailblazer then
+                if CharSaved.did[429] then
+                    printWarning("You have flown on a taxi, so you cannot be a trailblazer")
+                    return
+                end
+                if CharSaved.did[895] then
+                    printWarning("You have hearthed/teleported, so you cannot be a trailblazer")
+                    return
+                end
             end
         else
             CharSaved.did[429] = nil
@@ -1835,8 +1839,8 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^lazy$")
     p3, p4 = str:find("^sudo lazy$")
     if p1 or p3 then
-        if playerLevel > 1 and p3 == nil then
-            printWarning("Sorry, you cannot change mountaineer achievements after level 1")
+        if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
+            printWarning("Sorry, you cannot change mountaineer achievements after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
             return
         end
         CharSaved.isLazyBastard = not CharSaved.isLazyBastard
@@ -2140,19 +2144,25 @@ function onPlayerEnteringWorld()
 
     if level == 1 and xp < 200 then
         if CharSaved.isLucky then
-            printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack") .. " before reaching level 2")
-        end
-        if not CharSaved.isTrailblazer then
-            printInfo("If you want to do the trailblazer achievement, type " .. colorText('ffff00', "/mtn trailblazer") .. " before reaching level 2")
+            printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack") .. " before reaching level " .. (MAX_LEVEL_TO_CHANGE_PLAY_MODE+1))
         end
         if not CharSaved.isPunchy then
-            printInfo("If you want to do the punchy achievement, type " .. colorText('ffff00', "/mtn punchy") .. " before reaching level 2")
+            printInfo("If you want to do the punchy achievement, type " .. colorText('ffff00', "/mtn punchy") .. " before reaching level " .. (MAX_LEVEL_TO_CHANGE_PLAY_MODE+1))
+        end
+        if not CharSaved.isTrailblazer then
+            printInfo("If you want to do the trailblazer achievement, type " .. colorText('ffff00', "/mtn trailblazer"))
         end
     end
 
-    if level >= 6 and not CharSaved.madeWeapon then
-        printWarning("You have not yet made your self-crafted weapon. You need to do that before reaching level 10.")
-        printSpellsICanAndCannotUse()
+    if CharSaved.madeWeapon then
+        if level < 10 then
+            printGood("You made your self-crafted weapon, so all spells are available to you")
+        end
+    else
+        if level >= 6 then
+            printWarning("You have not yet made your self-crafted weapon - you need to do that before reaching level 10")
+            printSpellsICanAndCannotUse()
+        end
     end
 
     -- Check the WoW version and set constants accordingly.
@@ -2652,7 +2662,7 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
         -- Do the following after a short delay.
         C_Timer.After(.1, function()
 
-            if gSpellsDisallowedForTrailblazer[spellId] then
+            if gSpellsDisallowedForTrailblazer[gSpellIdBeingCast] then
 
                 CharSaved.did[895] = true                                       --pdb("895: hearth, Astral Recall, teleport, or portal")
 
