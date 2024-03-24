@@ -501,7 +501,7 @@ local function initSavedVarsIfNec(forceAcct, forceChar)
             dispositions = {}, -- table of item dispositions (key = itemId, value = ITEM_DISPOSITION_xxx)
             madeWeapon = false,
             xpFromLastGain = 0,
-            did = {}, -- 501=challenge is over, 429=taxi, 895=hearth, 609=skills, 779=failed punchy
+            did = {}, -- 501=challenge is over, 429=taxi, 895=hearth, 609=skills, 779=failed punchy, 382=revived pet
         }
     end
 end
@@ -2090,17 +2090,6 @@ function onPlayerEnteringWorld()
     printInfo("Loaded - type /mtn to access options and features")
     printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
 
-    if CharSaved.did[501] then
-        -- Do the following after a delay of a few seconds.
-        C_Timer.After(6, function()
-            playSound(I_HAVE_FAILED_SOUND)
-            printWarning("Sorry, you have failed a previous requirement")
-            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
-        end)
-        return
-    end
-
     -- If this is the first login for this character, clear all CharSaved
     -- values in case the player rolled a previous toon with the same name.
     if level == 1 and xp == 0 then
@@ -2135,6 +2124,17 @@ function onPlayerEnteringWorld()
         PlaySoundFile(ERROR_SOUND_FILE)
         printWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
         flashWarning(PLAYER_CLASS_NAME .. " is not a valid Mountaineer class")
+        return
+    end
+
+    if CharSaved.did[501] then
+        -- Do the following after a delay of a few seconds.
+        C_Timer.After(6, function()
+            playSound(I_HAVE_FAILED_SOUND)
+            printWarning("Sorry, you have failed a previous requirement")
+            printWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+            flashWarning("YOUR MOUNTAINEER CHALLENGE IS OVER")
+        end)
         return
     end
 
@@ -2632,10 +2632,11 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
             if PLAYER_CLASS_ID == CLASS_HUNTER and spellId == 982 then -- Revive Pet
 
-                local msg = "Pets are mortal, you must abandon your pet"
-                printWarning(msg)
-                flashWarning(msg)
-                playSound(ERROR_SOUND_FILE)
+                if not CharSaved.did[382] then
+                    flashWarning("Are you sure you can revive?")
+                    printWarning("If you're doing the \"All in the Family\" or \"I'm Special\" achievement, your pet is mortal and must be abandoned. If you're not doing either of these achievements, you may revive your pet.")
+                    CharSaved.did[382] = true
+                end
 
             elseif CharSaved.isTrailblazer then
 
