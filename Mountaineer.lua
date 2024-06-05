@@ -10,7 +10,6 @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
-local ADDON_VERSION = '2.2.1' -- This should be the same as in the .toc file.
 local function printnothing() end
 local pdb = printnothing
 
@@ -495,7 +494,7 @@ local function initSavedVarsIfNec(forceAcct, forceChar)
     end
     if forceChar or CharSaved == nil then
         CharSaved = {
-            isLucky = true,
+            challengeMode = 1,
             isTrailblazer = false,
             isPunchy = false,
             dispositions = {}, -- table of item dispositions (key = itemId, value = ITEM_DISPOSITION_xxx)
@@ -595,10 +594,19 @@ local function setXPFromLastGain(xp)
     CharSaved.xpFromLastGain = xp
 end
 
+local function modeWord()
+    if CharSaved.challengeMode == 1 then return 'lucky'     end
+    if CharSaved.challengeMode == 2 then return 'hardtack'  end
+    if CharSaved.challengeMode == 3 then return 'craftsman' end
+    return ''
+end
+
 local function whatAmI()
     initSavedVarsIfNec()
+    local word = modeWord()
+    if word ~= '' then word = ' ' .. word end
     return "You are a"
-        .. (CharSaved.isLucky       and " lucky"        or " hardtack")
+        .. word
         .. (CharSaved.isLazyBastard and " lazy bastard" or "")
         .. (CharSaved.isTrailblazer and " trailblazing" or "")
         .. (CharSaved.isPunchy      and " punchy"       or "")
@@ -1311,6 +1319,9 @@ local ITEM_SOURCE_CONTAINER     = 6
 
 local function itemStatus(t, source, sourceId, isNewItem)
 
+    local MODE = CharSaved.challengeMode
+    local MODEWORD = modeWord()
+
     -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
     -- If the item is already on the allowed or disallowed lists, we don't need to use any logic.
@@ -1359,10 +1370,10 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
         if itemIsGray(t) then
             -- Grey items are always looted. You can't buy them or get them as quest rewards.
-            if CharSaved.isLucky then
-                return 1, t.link, "lucky mountaineers can use any looted gray quality items"
+            if MODE == 1 then
+                return 1, t.link, MODEWORD .. " mountaineers can use any looted gray quality items"
             else
-                return 0, t.link, "hardtack mountaineers cannot use looted gray quality items"
+                return 0, t.link, MODEWORD .. " mountaineers cannot use looted gray quality items"
             end
         end
 
@@ -1375,11 +1386,19 @@ local function itemStatus(t, source, sourceId, isNewItem)
         --end
 
         if itemIsAmmo(t) or itemIsThrown(t) then
-            return 2, t.link, "ammo and thrown weapons can be looted or accepted as a quest reward, but cannot be purchased"
+            if MODE == 3 then
+                return 2, t.link, "ammo and thrown weapons must be self-made"
+            else
+                return 2, t.link, "ammo and thrown weapons can be looted or accepted as a quest reward, but cannot be purchased"
+            end
         end
 
         if itemIsFoodOrDrink(t) then
-            return 2, t.link, "drinks are OK, food cannot be bought from a vendor"
+            if MODE == 3 then
+                return 2, t.link, "drinks are OK, food cannot be bought from a vendor, found food can only be used by pets"
+            else
+                return 2, t.link, "drinks are OK, food cannot be bought from a vendor"
+            end
         end
 
         if itemIsAQuestItem(t) then
@@ -1387,32 +1406,52 @@ local function itemStatus(t, source, sourceId, isNewItem)
         end
 
         if itemIsUncraftable(t) then
-            return 2, t.link, "uncraftable items can be looted or accepted as a quest reward, but cannot be purchased"
+            if MODE == 3 then
+                return 2, t.link, "uncraftable items are not allowed"
+            else
+                return 2, t.link, "uncraftable items can be looted or accepted as a quest reward, but cannot be purchased"
+            end
         end
 
         if itemIsRare(t) then
-            return 2, t.link, "rare items can be looted, but cannot be purchased or accepted as quest rewards"
+            if MODE == 3 then
+                return 2, t.link, "rare items must be self-made"
+            else
+                return 2, t.link, "rare items can be looted, but cannot be purchased or accepted as quest rewards"
+            end
         end
 
         if itemIsASpecialContainer(t) then
-            return 2, t.link, "special containers can be accepted as quest rewards, but cannot be purchased or looted"
+            if MODE == 3 then
+                return 2, t.link, "special containers are not allowed"
+            else
+                return 2, t.link, "special containers can be accepted as quest rewards, but cannot be purchased or looted"
+            end
         end
 
         if itemIsFromClassQuest(t) then
-            return 2, t.link, "class quest rewards can be accepted"
+            if MODE == 3 then
+                return 2, t.link, "class quest rewards are not allowed"
+            else
+                return 2, t.link, "class quest rewards can be accepted"
+            end
         end
 
-        if CharSaved.isLucky then
-            if CharSaved.isTrailblazer then
-                return 2, t.link, "lucky trailblazer mountaineers can only use this item if it is self-made, fished, looted, or purchased from an open-world vendor"
+        if CharSaved.isTrailblazer then
+            if MODE == 1 then
+                return 2, t.link, MODEWORD .. " trailblazer mountaineers can only use this item if it is self-made, fished, looted, or purchased from an open-world vendor"
+            elseif MODE == 2 then
+                return 2, t.link, MODEWORD .. " trailblazer mountaineers can only use this item if it is self-made, fished, looted from a container or a rare mob, or purchased from an open-world vendor"
             else
-                return 2, t.link, "lucky mountaineers can only use this item if it is self-made, fished, or looted"
+                return 2, t.link, MODEWORD .. " trailblazer mountaineers can only use this item if it is self-made or purchased from an open-world vendor"
             end
         else
-            if CharSaved.isTrailblazer then
-                return 2, t.link, "hardtack trailblazer mountaineers can only use this item if it is self-made, fished, looted from a container or a rare mob, or purchased from an open-world vendor"
+            if MODE == 1 then
+                return 2, t.link, MODEWORD .. " mountaineers can only use this item if it is self-made, fished, or looted"
+            elseif MODE == 2 then
+                return 2, t.link, MODEWORD .. " mountaineers can only use this item if it is self-made, fished, or looted from a container or a rare mob"
             else
-                return 2, t.link, "hardtack mountaineers can only use this item if it is self-made, fished, or looted from a container or a rare mob"
+                return 2, t.link, MODEWORD .. " mountaineers can only use this item if it is self-made"
             end
         end
 
@@ -1434,21 +1473,29 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
         if source == ITEM_SOURCE_CONTAINER then
 
-            -- This item is looted from a chest or something similar, so we allow it.
-            CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
-            return 1, t.link, "via container"
+            if MODE == 3 then
+                return 0, t.link, MODEWORD .. " mountaineers cannot use items from containers"
+            else
+                -- This item is looted from a chest or something similar, so we allow it.
+                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
+                return 1, t.link, "via container"
+            end
 
         end
 
         if source == ITEM_SOURCE_GAME_OBJECT then
 
-            if dispo == ITEM_DISPOSITION_FISHING or tonumber(sourceId) == 35591 then
-                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_FISHING
-                return 1, t.link, "via fishing"
+            if MODE == 3 then
+                return 0, t.link, MODEWORD .. " mountaineers cannot use items from fishing or containers"
             else
-                -- We don't know 100% for sure, but it's very likely this item is looted from a chest or something similar, so we allow it.
-                CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
-                return 1, t.link, "from container"
+                if dispo == ITEM_DISPOSITION_FISHING or tonumber(sourceId) == 35591 then
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_FISHING
+                    return 1, t.link, "via fishing"
+                else
+                    -- We don't know 100% for sure, but it's very likely this item is looted from a chest or something similar, so we allow it.
+                    CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
+                    return 1, t.link, "from container"
+                end
             end
 
         end
@@ -1460,19 +1507,31 @@ local function itemStatus(t, source, sourceId, isNewItem)
         end
 
         if itemIsAmmo(t) or itemIsThrown(t) then
-            if source == ITEM_SOURCE_PURCHASED then
-                return 0, t.link, "ammo and thrown weapons cannot be purchased"
+            if MODE == 3 then
+                return 0, t.link, "ammo and thrown weapons must be self-made"
             else
-                return 1, t.link, "ammo / thrown weapons"
+                if source == ITEM_SOURCE_PURCHASED then
+                    return 0, t.link, "ammo and thrown weapons cannot be purchased"
+                else
+                    return 1, t.link, "ammo / thrown weapons"
+                end
             end
         end
 
         if itemIsFoodOrDrink(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
-            return 1, t.link, "food/drink"
+            if MODE == 3 then
+                return 2, t.link, "drinks are OK, found food can only be used by pets"
+            else
+                return 1, t.link, "food/drink"
+            end
         end
 
         if itemIsAmmo(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
-            return 1, t.link, "ammo"
+            if MODE == 3 then
+                return 0, t.link, "ammo must be self-made"
+            else
+                return 1, t.link, "ammo"
+            end
         end
 
         if itemIsAQuestItem(t) then
@@ -1505,10 +1564,14 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
             if itemIsUncraftable(t) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                return 1, t.link, "uncraftable looted item", true
+                if MODE == 3 then
+                    return 0, t.link, "uncraftable items are not allowed"
+                else
+                    return 1, t.link, "uncraftable looted item", true
+                end
             end
 
-            if CharSaved.isLucky then
+            if MODE == 1 then
                 if itemIsANormalBag(t) then
                     CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
                     return 1, t.link, "THE BLESSED RUN!"
@@ -1522,12 +1585,20 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
             if itemIsRare(t) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
-                return 1, t.link, "rare item"
+                if MODE == 3 then
+                    return 0, t.link, "rare items are not allowed"
+                else
+                    return 1, t.link, "rare item"
+                end
             end
 
             if dispo == ITEM_DISPOSITION_RARE_MOB or unitIsRare(sourceId) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_RARE_MOB
-                return 1, t.link, "looted from rare mob"
+                if MODE == 3 then
+                    return 0, t.link, "items from rare mobs are not allowed"
+                else
+                    return 1, t.link, "looted from rare mob"
+                end
             end
 
             if t.rarity > 0 then
@@ -1542,17 +1613,29 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
             if itemIsUncraftable(t) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                return 1, t.link, "uncraftable quest reward", true
+                if MODE == 3 then
+                    return 0, t.link, "uncraftable items are not allowed"
+                else
+                    return 1, t.link, "uncraftable quest reward", true
+                end
             end
 
             if itemIsASpecialContainer(t) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                return 1, t.link, "special container"
+                if MODE == 3 then
+                    return 0, t.link, "special containers are not allowed"
+                else
+                    return 1, t.link, "special container"
+                end
             end
 
             if itemIsFromClassQuest(t) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                return 1, t.link, "class quest reward"
+                if MODE == 3 then
+                    return 0, t.link, "class quest rewards are not allowed"
+                else
+                    return 1, t.link, "class quest reward"
+                end
             end
 
             CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
@@ -1562,7 +1645,11 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
         if itemIsUncraftable(t) then
             CharSaved.dispositions[t.itemId] = nil
-            return 0, t.link, "uncraftable items are only allowed if looted or rewarded from a quest"
+            if MODE == 3 then
+                return 0, t.link, "uncraftable items are not allowed"
+            else
+                return 0, t.link, "uncraftable items are only allowed if looted or rewarded from a quest"
+            end
         end
 
         CharSaved.dispositions[t.itemId] = nil
@@ -1687,7 +1774,7 @@ local function isItemAllowed(itemId)
 
     elseif dispo == ITEM_DISPOSITION_LOOTED then
 
-        if not CharSaved.isLucky then
+        if CharSaved.challengeMode ~= 1 then
             return false, "looted"
         end
 
@@ -1765,10 +1852,10 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^lucky *(%a*)$")
     p3, p4 = str:find("^sudo lucky$")
     if p1 or p3 then
-        if CharSaved.isLucky then
+        if CharSaved.challengeMode == 1 then
             printGood(whatAmI())
         else
-            CharSaved.isLucky = true
+            CharSaved.challengeMode = 1
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You can use any looted items."))
             if playerLevel == 1 and xp == 0 then
                 printWarning("You must have at least 1 XP before your choice will be saved for your next session")
@@ -1781,15 +1868,39 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^hardtack$")
     p3, p4 = str:find("^sudo hardtack$")
     if p1 or p3 then
-        if not CharSaved.isLucky then
+        if CharSaved.challengeMode == 2 then
             printGood(whatAmI())
         else
             if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
                 printWarning("Sorry, you cannot change mountaineer mode after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
                 return
             end
-            CharSaved.isLucky = false
+            CharSaved.challengeMode = 2
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You cannot use looted items (with some exceptions, of course)."))
+            if CharSaved.isLazyBastard then
+                CharSaved.isLazyBastard = false
+                printWarning("Your lazy bastard challenge has been turned off")
+            end
+            if playerLevel == 1 and xp == 0 then
+                printWarning("You must have at least 1 XP before your choice will be saved for your next session")
+            end
+            checkInventory()
+        end
+        return
+    end
+
+    p1, p2 = str:find("^craftsman$")
+    p3, p4 = str:find("^sudo craftsman$")
+    if p1 or p3 then
+        if CharSaved.challengeMode == 3 then
+            printGood(whatAmI())
+        else
+            if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
+                printWarning("Sorry, you cannot change mountaineer mode after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
+                return
+            end
+            CharSaved.challengeMode = 3
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "All items you use must be self-made."))
             if CharSaved.isLazyBastard then
                 CharSaved.isLazyBastard = false
                 printWarning("Your lazy bastard challenge has been turned off")
@@ -1846,9 +1957,9 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         CharSaved.isLazyBastard = not CharSaved.isLazyBastard
         if CharSaved.isLazyBastard then
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "BEFORE you reach level 10, you must drop your primary professions and never take another one while leveling. All primary professions can be taken, dropped, and retaken before level 10. All secondary professions are required throughout your run as usual."))
-            if not CharSaved.isLucky then
-                CharSaved.isLucky = true
-                printWarning("Your mode has been changed from hardtack to lucky.")
+            if CharSaved.challengeMode ~= 1 then
+                CharSaved.challengeMode = 1
+                printWarning("Your mode has been changed to lucky.")
             end
         else
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Lazy bastard mode off."))
@@ -1992,8 +2103,8 @@ SlashCmdList["MOUNTAINEER"] = function(str)
 =DUMP=
 ]]
 
-    print(colorText('ffff00', "/mtn lucky/hardtack"))
-    print("   Switches you to lucky or hardtack mountaineer mode.")
+    print(colorText('ffff00', "/mtn lucky/hardtack/craftsman"))
+    print("   Switches you to lucky/hardtack/craftsman mountaineer mode.")
 
     print(colorText('ffff00', "/mtn trailblazer/lazy"))
     print("   Toggles the trailblazer and/or the lazy bastard achievement.")
@@ -2078,7 +2189,7 @@ EventFrame:RegisterEvent('QUEST_PROGRESS')
 EventFrame:RegisterEvent('UNIT_SPELLCAST_SENT')
 EventFrame:RegisterEvent('UNIT_SPELLCAST_SUCCEEDED')
 
-function onPlayerEnteringWorld()
+local function onPlayerEnteringWorld()
 
     initSavedVarsIfNec()
 
@@ -2107,9 +2218,17 @@ function onPlayerEnteringWorld()
     PLAYER_LOC = PlayerLocation:CreateFromUnit("player")
     PLAYER_CLASS_NAME, _, PLAYER_CLASS_ID = C_PlayerInfo.GetClass(PLAYER_LOC)
 
+    -- If the player just upgraded from before Craftsman, set the mode as appropriate.
+    -- Mode 1=lucky, 2=hardtack, 3=craftsman.
+
+    if CharSaved.challengeMode == nil and CharSaved.isLucky ~= nil then
+        CharSaved.challengeMode = (CharSaved.isLucky) and 1 or 2
+        CharSaved.isLucky = nil
+    end
+
     -- In case the player is using old CharSaved data, set some appropriate defaults.
 
-    if CharSaved.isLucky        == nil then CharSaved.isLucky       = true          end
+    if CharSaved.challengeMode  == nil then CharSaved.challengeMode = 1             end
     if CharSaved.isTrailblazer  == nil then CharSaved.isTrailblazer = false         end
     if CharSaved.madeWeapon     == nil then CharSaved.madeWeapon    = (level >= 10) end
     if CharSaved.dispositions   == nil then CharSaved.dispositions  = {}            end
@@ -2143,8 +2262,9 @@ function onPlayerEnteringWorld()
     printGood(whatAmI())
 
     if level == 1 and xp < 200 then
-        if CharSaved.isLucky then
+        if CharSaved.challengeMode == 1 then
             printInfo("If you want to do the hardtack challenge, type " .. colorText('ffff00', "/mtn hardtack") .. " before reaching level " .. (MAX_LEVEL_TO_CHANGE_PLAY_MODE+1))
+            printInfo("If you want to do the craftsman challenge, type " .. colorText('ffff00', "/mtn craftsman") .. " before reaching level " .. (MAX_LEVEL_TO_CHANGE_PLAY_MODE+1))
         end
         if not CharSaved.isPunchy then
             printInfo("If you want to do the punchy achievement, type " .. colorText('ffff00', "/mtn punchy") .. " before reaching level " .. (MAX_LEVEL_TO_CHANGE_PLAY_MODE+1))
