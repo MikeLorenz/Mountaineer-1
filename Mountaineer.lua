@@ -3,6 +3,7 @@
 @@                                                                              @@
 @@  Created v1 12/2021 by ManchegoMike (MSL)                                    @@
 @@  Created v2 08/2022 by ManchegoMike (MSL)                                    @@
+@@  Created v3 11/2024 by ManchegoMike (MSL)                                    @@
 @@                                                                              @@
 @@  http://tinyurl.com/hc-mountaineers                                          @@
 @@  https://www.twitch.tv/ManchegoMike                                          @@
@@ -10,8 +11,9 @@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 ]]
 
-local function printnothing() end
+local addonName, core = ...;
 local pdb = print
+local function printnothing() end
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -324,8 +326,8 @@ local gSkills = {
     ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
     ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
     ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
-    ['unarmed']   = { rank = 0, firstCheckLevel =  4, name = L['Unarmed'] },
-    ['defense']   = { rank = 0, firstCheckLevel =  4, name = L['Defense'] },
+    ['unarmed']   = { rank = 0, firstCheckLevel = 10, name = L['Unarmed'] },
+    ['defense']   = { rank = 0, firstCheckLevel = 10, name = L['Defense'] },
 }
 
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
@@ -835,7 +837,7 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
 
                 -- The player has trained this skill.
 
-                if key == 'unarmed' or key == 'defense' then
+                if key == 'unarmed' then
 
                     if CharSaved.isPunchy then
 
@@ -2032,7 +2034,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         end
         CharSaved.isPunchy = not CharSaved.isPunchy
         if CharSaved.isPunchy then
-            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You must maintain your unarmed and defense skills within 15 points of maximum at all times."))
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You must maintain your unarmed skill within 15 points of maximum at all times."))
         else
             printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Punchy mode off."))
         end
@@ -2453,7 +2455,7 @@ local function onPlayerSkillUp(text)
         local key = skillName:lower()                                           --pdb('key:', key)
         skillLevel = tonumber(skillLevel)                                       --pdb('skillLevel:', skillLevel)
 
-        if (key == 'first aid' or key == 'fishing' or key == 'cooking') or (CharSaved.isPunchy and (key == 'unarmed' or key == 'defense')) then
+        if (key == 'first aid' or key == 'fishing' or key == 'cooking' or key == 'defense') or (CharSaved.isPunchy and (key == 'unarmed')) then
 
             local workComplete = false
 
