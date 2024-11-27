@@ -11,7 +11,7 @@
 ]]
 
 local function printnothing() end
-local pdb = printnothing
+local pdb = print
 
 --[[
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -202,6 +202,18 @@ local function maxLevel()
     return 60
 end
 
+local function contains(s, sub)
+    return s:find(sub, 1, true) ~= nil
+end
+
+local function startswith(s, start)
+    return s:sub(1, #start) == start
+end
+
+local function endswith(s, ending)
+    return ending == "" or s:sub(-#ending) == ending
+end
+
 local function printableLink(link)
     if not link then return nil end
     return string.gsub(link, '|', '||')
@@ -280,6 +292,9 @@ local L = {
     ["You receive loot"] = "You receive loot",  -- The message you get when you loot a corpse.
     ["You receive item"] = "You receive item",  -- The message you get when you get a quest reward or buy something from a merchant.
     ["You create"] = "You create",  -- The message you get when you create something.
+    ["receives loot"] = "receives loot",  -- The message you get when someone loots a corpse.
+    ["receives item"] = "receives item",  -- The message you get when someone gets a quest reward or buys something from a merchant.
+    ["creates"] = "creates",  -- The message you get when someone creates something.
     ["Professions"] = "Professions",  -- The heading for the section of the Skills dialog that contains your primary professions.
     ["First Aid"] = "First Aid",  -- Secondary profession name as it appears in the Skills dialog.
     ["Fishing"] = "Fishing",  -- Secondary profession name as it appears in the Skills dialog.
@@ -365,8 +380,10 @@ local gDefaultAllowedItems = {
     [ '8067'] = "made via engineering", -- Crafted Light Shot
     [ '8068'] = "made via engineering", -- Crafted Heavy Shot
     [ '8069'] = "made via engineering", -- Crafted Solid Shot
+    ['10456'] = "quest item", -- A Bulging Coin Purse (Dry Times)
     ['10512'] = "made via engineering", -- Hi-Impact Mithril Slugs
     ['11407'] = "misc item", -- Torn Bear Pelt
+    ['12225'] = "used for fishing", -- Blump Family Fishing Pole
     ['15874'] = "click to open", -- soft-shelled clam
     ['15997'] = "made via engineering", -- Thorium Shells
     ['16645'] = "quest item", -- Shredder Operating Manual - Page 1
@@ -382,6 +399,8 @@ local gDefaultAllowedItems = {
     ['16655'] = "quest item", -- Shredder Operating Manual - Page 11
     ['16656'] = "quest item", -- Shredder Operating Manual - Page 12
     ['18042'] = "make Thorium Shells & trade with an NPC in TB or IF", -- Thorium Headed Arrow
+    ['19022'] = "used for fishing", -- Nat Pagle's Extreme Angler FC-5000
+    ['19970'] = "used for fishing", -- Arcanite Fishing Pole
     ['20393'] = "special event", -- Treat Bag
     ['22250'] = "used for profession", -- Herb Bag
     ['23247'] = "summer fire festival", -- Burning Blossom
@@ -501,6 +520,7 @@ local function initSavedVarsIfNec(forceAcct, forceChar)
             madeWeapon = false,
             xpFromLastGain = 0,
             did = {}, -- 501=challenge is over, 429=taxi, 895=hearth, 609=skills, 779=failed punchy, 382=revived pet
+            hideLootWarnings = false,
         }
     end
 end
@@ -582,6 +602,17 @@ local function setShowMiniMap(tf)
     else
         MinimapCluster:Hide()
     end
+end
+
+local function setHideLootWarnings(tf)
+    initSavedVarsIfNec()
+    if tf == nil then
+        CharSaved.hideLootWarnings = not CharSaved.hideLootWarnings
+    else
+        CharSaved.hideLootWarnings = tf
+    end
+    if CharSaved.hideLootWarnings then value = 'off' else value = 'on' end
+    printInfo("Loot warnings are now " .. value)
 end
 
 local function getXPFromLastGain()
@@ -712,12 +743,12 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
 
 end
 
-local function completedLevel10Requirements()
+local function completedLevel10Requirements()                                   --pdb('completedLevel10Requirements()')
 
     local skills = {
-        ['fishing'  ] = true,
-        ['cooking'  ] = true,
-        ['first aid'] = true,
+        ['fishing'  ] = 0,
+        ['cooking'  ] = 0,
+        ['first aid'] = 0,
     }
 
     local minSkillAt10 = requiredSkillLevel(10)                                 --pdb('  minSkillAt10:', minSkillAt10)
@@ -727,11 +758,18 @@ local function completedLevel10Requirements()
         local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(i)
         if not isHeader then
             local key = skillName:lower()
-            if skills[key] then                                                 --pdb('  key:', key)      --pdb('  skillRank:', skillRank)
-                if skillRank < minSkillAt10 then
+            if skills[key] then                                                 --pdb('  [1] key:', key, ', rank:', skillRank)
+                skills[key] = skillRank
+                if skillRank < minSkillAt10 then                                --pdb('  [1] returning false')
                     return false
                 end
             end
+        end
+    end
+
+    for key, skillRank in pairs(skills) do                                      --pdb('  [2] key:', key, ', rank:', skillRank)
+        if skillRank == 0 then                                                  --pdb('  [2] returning false')
+            return false
         end
     end
 
@@ -850,15 +888,15 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
 
         end -- for
 
-        if not CharSaved.madeWeapon then
-            if playerLevel >= 10 then
-                fatals[#fatals+1] = "You did not make your self-crafted weapon before reaching level 10."
-            elseif playerLevel == 9 then
-                warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
-            elseif playerLevel >= 6 then
-                reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
-            end
-        end
+        --if not CharSaved.madeWeapon then
+        --    if playerLevel >= 10 then
+        --        fatals[#fatals+1] = "You did not make your self-crafted weapon before reaching level 10."
+        --    elseif playerLevel == 9 then
+        --        warnings[#warnings+1] = "You have not yet made your self-crafted weapon - you need to do that before reaching level 10"
+        --    elseif playerLevel >= 6 then
+        --        reminders[#reminders+1] = "You have not yet made your self-crafted weapon - you will need to do that before reaching level 10"
+        --    end
+        --end
 
         if CharSaved.isLazyBastard then
             local sawProfessionsHeader = false
@@ -1321,6 +1359,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
     local MODE = CharSaved.challengeMode
     local MODEWORD = modeWord()
+    local playerLevel = UnitLevel('player');
 
     -- t is a table with the following fields: itemId, name, link, rarity, level, minLevel, type, subType, stackCount, equipLoc, texture, sellPrice, classId, subclassId, bindType, expacId, setId, isCraftingReagent
 
@@ -1455,7 +1494,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
             end
         end
 
-    else
+    else -- there is a non-nil source
 
         -- Setting CharSaved.dispositions[t.itemId] to nil means that there is
         -- enough information in the item intrinsically to determine its
@@ -1474,7 +1513,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
         if source == ITEM_SOURCE_CONTAINER then
 
             if MODE == 3 then
-                return 0, t.link, MODEWORD .. " mountaineers cannot use items from containers"
+                -- Craftsmen items have to be judged on their own merit. Coming from a container does not give them a pass.
             else
                 -- This item is looted from a chest or something similar, so we allow it.
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_CONTAINER
@@ -1486,7 +1525,14 @@ local function itemStatus(t, source, sourceId, isNewItem)
         if source == ITEM_SOURCE_GAME_OBJECT then
 
             if MODE == 3 then
-                return 0, t.link, MODEWORD .. " mountaineers cannot use items from fishing or containers"
+                -- Craftsmen items have to be judged on their own merit. Coming from a container does not give them a pass.
+                -- return 0, t.link, MODEWORD .. " mountaineers cannot use items from fishing or containers"
+                if dispo == ITEM_DISPOSITION_FISHING or tonumber(sourceId) == 35591 then
+                    if itemIsFoodOrDrink(t) and startswith(t.name, "Raw ") then
+                        CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_FISHING
+                        return 1, t.link, "via fishing"
+                    end
+                end
             else
                 if dispo == ITEM_DISPOSITION_FISHING or tonumber(sourceId) == 35591 then
                     CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_FISHING
@@ -1519,6 +1565,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
         end
 
         if itemIsFoodOrDrink(t) and (source == ITEM_SOURCE_LOOTED or source == ITEM_SOURCE_REWARDED) then
+            -- Show these reminders 5% of the time; otherwise they can be very spammy.
             if MODE == 3 then
                 return 2, t.link, "drinks are OK, found food can only be used by pets"
             else
@@ -1548,7 +1595,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
             end
 
             if itemIsFoodOrDrink(t) then
-                return 2, t.link, "drinks can be purchased, food cannot"
+                return 2, t.link, "all drinks can be purchased; food can only be purchased if you sell twice the amount of food you have cooked"
             end
 
             --if itemIsFoodOrDrink(t) or itemIsAmmo(t) or itemIsThrown(t) then
@@ -1576,7 +1623,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
                     CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
                     return 1, t.link, "THE BLESSED RUN!"
                 end
-                if t.rarity > 0 then
+                if t.rarity ~= nil and t.rarity > 0 then
                     -- Don't save disposition if the item is gray. We know they are looted, and there's no need to pollute CharSaved with all the grays.
                     CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_LOOTED
                 end
@@ -1653,7 +1700,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
         end
 
         CharSaved.dispositions[t.itemId] = nil
-        return 0, t.link, "failed all tests"
+        return 0, t.link --, "failed all tests"
 
     end
 
@@ -2068,6 +2115,19 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         return
     end
 
+    p1, p2, match = str:find("^lootwarn *(%a*)$")
+    if p1 then
+        match = string.lower(match)
+        if match == 'on' or match == 'show' then
+            setHideLootWarnings(false)
+        elseif match == 'off' or match == 'hide' then
+            setHideLootWarnings(true)
+        else
+            setHideLootWarnings(nil)
+        end
+        return
+    end
+
     p1, p2, arg1 = str:find("^allow +(.*)$")
     if arg1 then
         allowOrDisallowItem(arg1, true, override)
@@ -2126,13 +2186,18 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     end
 
     print(colorText('ffff00', "/mtn verbose [on/off]"))
-    print("   Turns verbose mode on or off. When on, you will see all evaluation messages when receiving items. When off, all \"item is allowed\" messages will be suppressed, as well as \"item is disallowed\" for gray items.")
+    print("   Turns verbose mode on or off. (Now " .. (AcctSaved.verbose and 'ON' or 'OFF') .. ")")
+    print("   When on, you will see all evaluation messages when receiving items.")
+    print("   When off, all \"item is allowed\" messages will be suppressed, as well as \"item is disallowed\" for gray items.")
 
     print(colorText('ffff00', "/mtn sound [on/off]"))
-    print("   Turns addon sounds on or off.")
+    print("   Turns addon sounds on or off. (Now " .. (AcctSaved.quiet and 'OFF' or 'ON') .. ")")
 
     print(colorText('ffff00', "/mtn minimap [on/off]"))
-    print("   Turns the minimap on or off.")
+    print("   Turns the minimap on or off. (Now " .. (AcctSaved.showMiniMap and 'ON' or 'OFF') .. ")")
+
+    print(colorText('ffff00', "/mtn lootwarn [on/off]"))
+    print("   Turns on or off warnings if loot messages cannot be parsed. (Now " .. (CharSaved.hideLootWarnings and 'OFF' or 'ON') .. ")")
 
     print(colorText('ffff00', "/mtn check {id/name/link}"))
     print("   Checks an item to see if you can use it.")
@@ -2681,6 +2746,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             local matched = false
 
             local _, _, itemLink = text:find(L['You receive loot'] .. ": (.*)%.")
+            if not itemLink then
+                -- Maybe it's a party member.
+                _, _, itemLink = text:find(".* " .. L['receives loot'] .. ": (.*)%.")
+            end
             if not matched and itemLink ~= nil then
                 matched = true
                 --pdb('match you receive loot')
@@ -2697,6 +2766,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             end
 
             local _, _, itemLink = text:find(L['You receive item'] .. ": (.*)%.")
+            if not itemLink then
+                -- Maybe it's a party member.
+                _, _, itemLink = text:find(".* " .. L['receives item'] .. ": (.*)%.")
+            end
             if not matched and itemLink ~= nil then
                 matched = true
                 --pdb('match you receive item')
@@ -2710,6 +2783,10 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
             end
 
             local _, _, itemLink = text:find(L['You create'] .. ": (.*)%.")
+            if not itemLink then
+                -- Maybe it's a party member.
+                _, _, itemLink = text:find(".* " .. L['creates'] .. ": (.*)%.")
+            end
             if not matched and itemLink ~= nil then
                 matched = true
                 --pdb('match you create')
@@ -2718,7 +2795,9 @@ EventFrame:SetScript('OnEvent', function(self, event, ...)
 
             if not matched then
                 local name = itemLink or 'item'
-                printWarning("Unable to determine whether or not you can use " .. name .. " - check the localization strings in Mountaineer.lua")
+                if not CharSaved.hideLootWarnings then
+                    printWarning("Unable to determine whether or not you can use " .. name .. " - check the localization strings in Mountaineer.lua")
+                end
             end
 
         end)
