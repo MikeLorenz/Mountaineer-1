@@ -323,11 +323,11 @@ local gLastMerchantUnitTargeted = nil
 
 -- These are the skills we check.
 local gSkills = {
-    ['first aid'] = { rank = 0, firstCheckLevel = 10, name = L['First Aid'] },
-    ['fishing']   = { rank = 0, firstCheckLevel = 10, name = L['Fishing'] },
-    ['cooking']   = { rank = 0, firstCheckLevel = 10, name = L['Cooking'] },
-    ['unarmed']   = { rank = 0, firstCheckLevel = 10, name = L['Unarmed'] },
-    ['defense']   = { rank = 0, firstCheckLevel = 10, name = L['Defense'] },
+    ['first aid'] = { rank = 0, playerToSkillLevel = function(n) return n*5 end,     skillToPlayerLevel = function(n) return math.floor(n/5) end,   showWontHaveToImproveUntil = true,  doNotReportBeforeLevel = 6, firstCheckLevel = 10, name = L['First Aid'] },
+    ['fishing']   = { rank = 0, playerToSkillLevel = function(n) return n*5 end,     skillToPlayerLevel = function(n) return math.floor(n/5) end,   showWontHaveToImproveUntil = true,  doNotReportBeforeLevel = 6, firstCheckLevel = 10, name = L['Fishing']   },
+    ['cooking']   = { rank = 0, playerToSkillLevel = function(n) return n*5 end,     skillToPlayerLevel = function(n) return math.floor(n/5) end,   showWontHaveToImproveUntil = true,  doNotReportBeforeLevel = 6, firstCheckLevel = 10, name = L['Cooking']   },
+    ['unarmed']   = { rank = 0, playerToSkillLevel = function(n) return (n-3)*5 end, skillToPlayerLevel = function(n) return math.floor(n/5+3) end, showWontHaveToImproveUntil = false, doNotReportBeforeLevel = 8, firstCheckLevel = 10, name = L['Unarmed']   },
+    ['defense']   = { rank = 0, playerToSkillLevel = function(n) return (n-3)*5 end, skillToPlayerLevel = function(n) return math.floor(n/5+3) end, showWontHaveToImproveUntil = false, doNotReportBeforeLevel = 8, firstCheckLevel = 10, name = L['Defense']   },
 }
 
 -- Used in CHAT_MSG_SKILL to let the player know immediately when all their skills are up to date.
@@ -493,23 +493,11 @@ local ITEM_DISPOSITION_SELF_MADE    = 10    -- items created by the player
 
 local functionQueue = Queue.new()
 
-local function requiredSkillLevel(playerLevel)
-    return playerLevel * 5
-end
-
-local function requiredWeaponLevel(playerLevel)
-    return (playerLevel - 3) * 5
-end
-
-local function playerLevelForSkill(skillLevel)
-    return math.floor(skillLevel / 5)
-end
-
 local function initSavedVarsIfNec(forceAcct, forceChar)
     if forceAcct or AcctSaved == nil then
         AcctSaved = {
             quiet = false,
-            showMiniMap = false,
+            showMiniMap = true,
             verbose = true,
         }
     end
@@ -531,9 +519,9 @@ local function printAllowedItem(itemLink, why, alwaysShowWhy)
     --itemLink = itemLink or 'Unknown item'
     if AcctSaved.verbose or alwaysShowWhy then
         if why and why ~= '' then
-            printGood(itemLink .. " is allowed (" .. why .. ")")
+            printGood(itemLink .. " allowed (" .. why .. ")")
         else
-            printGood(itemLink .. " is allowed")
+            printGood(itemLink .. " allowed")
         end
     end
 end
@@ -709,34 +697,34 @@ local function allowOrDisallowItem(itemStr, allow, userOverride)
     if allow == nil then
 
         if gDefaultAllowedItems[itemId] then
-            if userOverride then printWarning(link .. " (" .. itemId .. ") is allowed by default and cannot be changed") end
+            if userOverride then printWarning(link .. " (" .. itemId .. ") allowed by default and cannot be changed") end
             return false
         end
         if gDefaultDisallowedItems[itemId] then
-            if userOverride then printWarning(link .. " (" .. itemId .. ") is disallowed by default and cannot be changed") end
+            if userOverride then printWarning(link .. " (" .. itemId .. ") disallowed by default and cannot be changed") end
             return false
         end
         CharSaved.dispositions[itemId] = nil
-        if userOverride then printInfo(link .. " (" .. itemId .. ") is now forgotten") end
+        if userOverride then printInfo(link .. " (" .. itemId .. ") now forgotten") end
 
     elseif allow then
 
         if gDefaultDisallowedItems[itemId] then
-            if userOverride then printWarning(link .. " (" .. itemId .. ") is disallowed by default and cannot be changed") end
+            if userOverride then printWarning(link .. " (" .. itemId .. ") disallowed by default and cannot be changed") end
             return false
         end
         CharSaved.dispositions[itemId] = ITEM_DISPOSITION_ALLOWED
-        if userOverride then printInfo(link .. " (" .. itemId .. ") is now allowed") end
+        if userOverride then printInfo(link .. " (" .. itemId .. ") now allowed") end
         --print('CharSaved.dispositions', itemId, 'ALLOWED')
 
     else
 
         if gDefaultAllowedItems[itemId] then
-            if userOverride then printWarning(link .. " (" .. itemId .. ") is allowed by default and cannot be changed") end
+            if userOverride then printWarning(link .. " (" .. itemId .. ") allowed by default and cannot be changed") end
             return false
         end
         CharSaved.dispositions[itemId] = ITEM_DISPOSITION_DISALLOWED
-        if userOverride then printInfo(link .. " (" .. itemId .. ") is now disallowed") end
+        if userOverride then printInfo(link .. " (" .. itemId .. ") now disallowed") end
         --print('CharSaved.dispositions', itemId, 'DISALLOWED')
 
     end
@@ -751,17 +739,18 @@ local function completedLevel10Requirements()                                   
         ['fishing'  ] = 0,
         ['cooking'  ] = 0,
         ['first aid'] = 0,
+        ['defense'  ] = 0,
     }
-
-    local minSkillAt10 = requiredSkillLevel(10)                                 --pdb('  minSkillAt10:', minSkillAt10)
 
     -- Gather data on the skills we care about.
     for i = 1, GetNumSkillLines() do
         local skillName, isHeader, isExpanded, skillRank, numTempPoints, skillModifier, skillMaxRank, isAbandonable, stepCost, rankCost, minLevel, skillCostType, skillDescription = GetSkillLineInfo(i)
         if not isHeader then
             local key = skillName:lower()
-            if skills[key] then                                                 --pdb('  [1] key:', key, ', rank:', skillRank)
+            local gskill = gSkills[key]
+            if skills[key] and gskill then                                      --pdb('  [1] key:', key, ', rank:', skillRank)
                 skills[key] = skillRank
+                local minSkillAt10 = gskill.playerToSkillLevel(10)                        --pdb('  minSkillAt10:', minSkillAt10)
                 if skillRank < minSkillAt10 then                                --pdb('  [1] returning false')
                     return false
                 end
@@ -815,10 +804,10 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
         -- Check the skill ranks against the expected rank.
         for key, skill in pairs(gSkills) do
 
-            local levelsToFirstSkillCheck = skill.firstCheckLevel - playerLevel
-            local rankRequiredAtFirstCheckLevel = requiredSkillLevel(skill.firstCheckLevel)
-            local rankRequiredAtThisLevel = requiredSkillLevel(playerLevel)
-            local rankRequiredAtNextLevel = requiredSkillLevel(playerLevel + 1)
+            local levelsToFirstSkillCheck       = skill.firstCheckLevel - playerLevel
+            local rankRequiredAtFirstCheckLevel = skill.playerToSkillLevel(skill.firstCheckLevel)
+            local rankRequiredAtThisLevel       = skill.playerToSkillLevel(playerLevel)
+            local rankRequiredAtNextLevel       = skill.playerToSkillLevel(playerLevel + 1)
 
             if skill.rank == 0 then
 
@@ -839,12 +828,10 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
 
                 if key == 'unarmed' then
 
-                    if CharSaved.isPunchy then
+                    if CharSaved.isPunchy and playerLevel >= skill.doNotReportBeforeLevel then
 
-                        --rankRequiredAtThisLevel = playerLevel * 5 - 15
-                        --rankRequiredAtNextLevel = rankRequiredAtThisLevel + 5
-                        rankRequiredAtThisLevel = requiredWeaponLevel(playerLevel)
-                        rankRequiredAtNextLevel = requiredWeaponLevel(playerLevel + 1)
+                        rankRequiredAtThisLevel = skill.playerToSkillLevel(playerLevel)
+                        rankRequiredAtNextLevel = skill.playerToSkillLevel(playerLevel + 1)
 
                         if skill.rank < rankRequiredAtThisLevel then
                             if not CharSaved.did[779] then
@@ -866,19 +853,19 @@ local function getSkillCheckMessages(hideMessageIfAllIsWell, hideWarningsAndNote
                         -- Don't check if more than 3 levels away from the first required level.
                     elseif levelsToFirstSkillCheck >= 2 then
                         -- The first skill check level is 2 or more levels away. Give them a gentle reminder.
-                        if skill.rank < rankRequiredAtFirstCheckLevel then
+                        if skill.rank < rankRequiredAtFirstCheckLevel and playerLevel >= skill.doNotReportBeforeLevel then
                             reminders[#reminders+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtFirstCheckLevel .. " before you reach level " .. skill.firstCheckLevel
                         end
                     else
                         -- The player is either 1 level away from the first required level, or they are past it.
-                        if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel then
+                        if skill.rank < rankRequiredAtThisLevel and playerLevel >= skill.firstCheckLevel and playerLevel >= skill.doNotReportBeforeLevel then
                             -- At this level the player must be at least the minimum rank.
                             fatals[#fatals+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but the minimum requirement at this level is " .. rankRequiredAtThisLevel
                         elseif skill.rank < rankRequiredAtNextLevel and playerLevel < maxLevel() then
                             warnings[#warnings+1] = "Your " .. skill.name .. " skill is " .. skill.rank .. ", but MUST be at least " .. rankRequiredAtNextLevel .. " before you reach level " .. (playerLevel + 1)
                         else
-                            local untilLevel = playerLevelForSkill(skill.rank)
-                            if untilLevel > playerLevel then
+                            local untilLevel = skill.skillToPlayerLevel(skill.rank)
+                            if untilLevel > playerLevel and skill.showWontHaveToImproveUntil then
                                 notes[#notes+1] = "You won't have to improve " .. skill.name .. " until level " .. untilLevel
                             end
                         end
@@ -1409,15 +1396,6 @@ local function itemStatus(t, source, sourceId, isNewItem)
             return 0, t.link, "until you equip a self-crafted weapon"
         end
 
-        if itemIsGray(t) then
-            -- Grey items are always looted. You can't buy them or get them as quest rewards.
-            if MODE == 1 then
-                return 1, t.link, MODEWORD .. " mountaineers can use any looted gray quality items"
-            else
-                return 0, t.link, MODEWORD .. " mountaineers cannot use looted gray quality items"
-            end
-        end
-
         if itemIsReagentOrUsableForAProfession(t) then
             return 1, t.link, "reagents & items usable by a profession are always allowed"
         end
@@ -1451,6 +1429,15 @@ local function itemStatus(t, source, sourceId, isNewItem)
                 return 2, t.link, "uncraftable items are not allowed"
             else
                 return 2, t.link, "uncraftable items can be looted or accepted as a quest reward, but cannot be purchased"
+            end
+        end
+
+        if itemIsGray(t) then
+            -- Grey items are always looted. You can't buy them or get them as quest rewards.
+            if MODE == 1 then
+                return 1, t.link, MODEWORD .. " mountaineers can use any looted gray quality items"
+            else
+                return 0, t.link, MODEWORD .. " mountaineers cannot use looted gray quality items"
             end
         end
 
@@ -1597,7 +1584,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
             end
 
             if itemIsFoodOrDrink(t) then
-                return 2, t.link, "all drinks can be purchased; food can only be purchased if you sell twice the amount of food you have cooked"
+                return 2, t.link, "all drinks can be purchased; food can only be purchased if you sell the same amount of cooked food"
             end
 
             --if itemIsFoodOrDrink(t) or itemIsAmmo(t) or itemIsThrown(t) then
@@ -2190,7 +2177,7 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     print(colorText('ffff00', "/mtn verbose [on/off]"))
     print("   Turns verbose mode on or off. (Now " .. (AcctSaved.verbose and 'ON' or 'OFF') .. ")")
     print("   When on, you will see all evaluation messages when receiving items.")
-    print("   When off, all \"item is allowed\" messages will be suppressed, as well as \"item is disallowed\" for gray items.")
+    print("   When off, all \"item allowed\" messages will be suppressed, as well as \"item disallowed\" for gray items.")
 
     print(colorText('ffff00', "/mtn sound [on/off]"))
     print("   Turns addon sounds on or off. (Now " .. (AcctSaved.quiet and 'OFF' or 'ON') .. ")")
@@ -2265,7 +2252,7 @@ local function onPlayerEnteringWorld()
 
     gPlayerGUID = UnitGUID('player')
 
-    printInfo("Loaded - type /mtn to access options and features")
+    printGood("Loaded - type /mtn to access options and features")
     printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
 
     -- If this is the first login for this character, clear all CharSaved
@@ -2438,6 +2425,9 @@ local function onPlayerEnteringWorld()
             gSkillsAreUpToDate = (warningCount == 0)
             gSkillsAreReadyForLevel10 = completedLevel10Requirements()
             checkInventory()
+            if AcctSaved.showMiniMap then
+                printInfo("Don't forget: Options > Interface > Display > Rotate Minimap")
+            end
 
         end)
 
@@ -2486,23 +2476,12 @@ local function onPlayerSkillUp(text)
 
             elseif skillLevel%5 == 0 then
 
-                if key == 'unarmed' or key == 'defense' then
-
-                    -- Don't bother showing "you won't have to improve" message.
-
-                else
-
-                    local goodUntilLevel = playerLevelForSkill(skillLevel)      --pdb('goodUntilLevel:', goodUntilLevel)
-
-                    local minPlayerLevel = 0
-                    if gSkills[key] and gSkills[key].firstCheckLevel then
-                        minPlayerLevel = gSkills[key].firstCheckLevel
+                local skill = gSkills[key]
+                if skill and skill.firstCheckLevel and skill.showWontHaveToImproveUntil then
+                    local pLevel = skill.skillToPlayerLevel(skillLevel)         --pdb('pLevel:', pLevel)
+                    if pLevel >= skill.firstCheckLevel then
+                        printGood("You won't have to improve " .. skillName .. " until level " .. pLevel)
                     end
-                                                                                --pdb('minPlayerLevel:', minPlayerLevel)
-                    if goodUntilLevel >= minPlayerLevel then
-                        printGood("You won't have to improve " .. skillName .. " until level " .. goodUntilLevel)
-                    end
-
                 end
 
             end
