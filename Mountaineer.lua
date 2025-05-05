@@ -768,6 +768,30 @@ local function completedLevel10Requirements()                                   
 
 end
 
+local function playerHasAPrimaryProfession()
+    local sawProfessionsHeader = false
+    for i = 1, GetNumSkillLines() do
+        local name, isHeader, isExpanded, rank, nTempPoints, modifier, maxRank, isAbandonable, stepCost, rankCost, minLevel, costType, desc = GetSkillLineInfo(i)
+        if isHeader then
+            if sawProfessionsHeader then
+                -- We're at a new header after seeing the Professions header, so we're done.
+                break
+            elseif string.lower(name) == string.lower(L["Professions"]) then
+                sawProfessionsHeader = true
+                if not isExpanded then
+                    exceptions[#exceptions+1] = "Cannot find your primary professions - please go into your skill window and expand the \"" .. L["Professions"] .. "\" section"
+                end
+            end
+        else
+            if sawProfessionsHeader then
+                -- It's a primary profession.
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Checks skills. Returns 4 arrays of strings: fatals, warnings, reminders, exceptions.
 -- Fatals are messages that the run is invalidated.
 -- Warnings are messages that the run will be invalidated on the next ding.
@@ -1037,8 +1061,8 @@ local function itemIsUncraftable(t)
         end
 
         if t.subclassId == Enum.ItemArmorSubclass.Generic then
-            if t.equipLoc == INVTYPE_FINGER
-            or t.equipLoc == INVTYPE_NECK
+            if t.equipLoc == 'INVTYPE_FINGER'
+            or t.equipLoc == 'INVTYPE_NECK'
             then
                 return (gameVersion() == 1)
             end
@@ -1584,7 +1608,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
             end
 
             if itemIsFoodOrDrink(t) then
-                return 2, t.link, "all drinks can be purchased; food can only be purchased if you sell the same amount of cooked food"
+                return 2, t.link, "all drinks can be purchased; food can only be purchased if it's a reagent or if you sell the same amount of cooked food"
             end
 
             --if itemIsFoodOrDrink(t) or itemIsAmmo(t) or itemIsThrown(t) then
@@ -1848,6 +1872,12 @@ local function inventoryWarnings()
                 else
                     why = ''
                 end
+                if link == nil then
+                    link = GetItemInfo(itemId)
+                end
+                if link == nil then
+                    link = '???'
+                end
                 msgs[#msgs+1] = link .. " should be unequipped " .. why
             end
         end
@@ -1907,8 +1937,8 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         if CharSaved.challengeMode == 2 then
             printGood(whatAmI())
         else
-            if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
-                printWarning("Sorry, you cannot change mountaineer mode after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
+            if CharSaved.challengeMode < 2 and playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
+                printWarning("Sorry, you cannot switch to hardtack mode after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
                 return
             end
             CharSaved.challengeMode = 2
@@ -1931,8 +1961,8 @@ SlashCmdList["MOUNTAINEER"] = function(str)
         if CharSaved.challengeMode == 3 then
             printGood(whatAmI())
         else
-            if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
-                printWarning("Sorry, you cannot change mountaineer mode after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
+            if CharSaved.challengeMode < 3 and playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
+                printWarning("Sorry, you cannot switch to craftsman mode after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
                 return
             end
             CharSaved.challengeMode = 3
@@ -1986,19 +2016,27 @@ SlashCmdList["MOUNTAINEER"] = function(str)
     p1, p2 = str:find("^lazy$")
     p3, p4 = str:find("^sudo lazy$")
     if p1 or p3 then
-        if playerLevel > MAX_LEVEL_TO_CHANGE_PLAY_MODE and p3 == nil then
-            printWarning("Sorry, you cannot change mountaineer achievements after level " .. MAX_LEVEL_TO_CHANGE_PLAY_MODE)
+        if not CharSaved.isLazyBastard and playerLevel > 9 and p3 == nil then
+            printWarning("Sorry, you cannot become a lazy bastard after level 9")
             return
         end
         CharSaved.isLazyBastard = not CharSaved.isLazyBastard
         if CharSaved.isLazyBastard then
-            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "BEFORE you reach level 10, you must drop your primary professions and never take another one while leveling. All primary professions can be taken, dropped, and retaken before level 10. All secondary professions are required throughout your run as usual."))
+            if playerLevel <= 9 then
+                printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You are now a lazy bastard. BEFORE you reach level 10, you must drop your primary professions and never take another one while leveling. All primary professions can be taken, dropped, and retaken before level 10. All secondary professions are required throughout your run as usual."))
+            else
+                if playerHasAPrimaryProfession() then
+                    printWarning("You must drop your primary profession(s) before becoming a lazy bastard.")
+                    return
+                end
+                printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You are now a lazy bastard and can no longer learn any primary professions."))
+            end
             if CharSaved.challengeMode ~= 1 then
                 CharSaved.challengeMode = 1
-                printWarning("Your mode has been changed to lucky.")
+                printWarning("Your mountaineer mode has been changed to lucky.")
             end
         else
-            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "Lazy bastard mode off."))
+            printGood(whatAmI() .. " - good luck! " .. colorText('ffffff', "You are no longer a lazy bastard: you can learn any professions you want."))
         end
         if playerLevel == 1 and xp == 0 then
             printWarning("You must have at least 1 XP before your choice will be saved for your next session")
@@ -2253,7 +2291,6 @@ local function onPlayerEnteringWorld()
     gPlayerGUID = UnitGUID('player')
 
     printGood("Loaded - type /mtn to access options and features")
-    printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
 
     -- If this is the first login for this character, clear all CharSaved
     -- values in case the player rolled a previous toon with the same name.
@@ -2314,6 +2351,7 @@ local function onPlayerEnteringWorld()
     -- Let the user know what mode they're playing in.
 
     printGood(whatAmI())
+    printInfo("For rules, go to http://tinyurl.com/hc-mountaineers")
 
     if level == 1 and xp < 200 then
         if CharSaved.challengeMode == 1 then
@@ -2330,7 +2368,7 @@ local function onPlayerEnteringWorld()
 
     if CharSaved.madeWeapon then
         if level < 10 then
-            printGood("You made your self-crafted weapon, so all spells are available to you")
+            printGood("You made your self-crafted weapon, so all abilities are available to you")
         end
     else
         if level >= 6 then
@@ -2425,13 +2463,20 @@ local function onPlayerEnteringWorld()
             gSkillsAreUpToDate = (warningCount == 0)
             gSkillsAreReadyForLevel10 = completedLevel10Requirements()
             checkInventory()
-            if AcctSaved.showMiniMap then
-                printInfo("Don't forget: Options > Interface > Display > Rotate Minimap")
-            end
 
         end)
 
     end
+
+    C_Timer.After(4, function()
+
+        if AcctSaved.showMiniMap then
+            print(" ")
+            printInfo("Don't forget: Options > Interface > Display > Rotate Minimap")
+            print(" ")
+        end
+
+    end)
 
 end
 
