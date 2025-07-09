@@ -1452,7 +1452,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
             if MODE == 3 then
                 return 2, t.link, "uncraftable items are not allowed"
             else
-                return 2, t.link, "uncraftable items can be looted or accepted as a quest reward, but cannot be purchased"
+                return 2, t.link, "uncraftable items can be looted, but cannot be purchased or accepted as a quest reward"
             end
         end
 
@@ -1673,11 +1673,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
 
             if itemIsUncraftable(t) then
                 CharSaved.dispositions[t.itemId] = ITEM_DISPOSITION_REWARDED
-                if MODE == 3 then
-                    return 0, t.link, "uncraftable items are not allowed"
-                else
-                    return 1, t.link, "uncraftable quest reward", true
-                end
+                return 0, t.link, "uncraftable items are not allowed"
             end
 
             if itemIsASpecialContainer(t) then
@@ -1708,7 +1704,7 @@ local function itemStatus(t, source, sourceId, isNewItem)
             if MODE == 3 then
                 return 0, t.link, "uncraftable items are not allowed"
             else
-                return 0, t.link, "uncraftable items are only allowed if looted or rewarded from a quest"
+                return 0, t.link, "uncraftable items are only allowed if looted"
             end
         end
 
